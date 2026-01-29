@@ -184,7 +184,7 @@ if [ "$ENABLE_MEMORY" = true ]; then
       select(.hooks | all(.command | (contains("pre-prompt-search") or contains("rag-context-hook")) | not))
     ] |
     .hooks.UserPromptSubmit += [{
-      "matcher": {},
+      "matcher": "*",
       "hooks": [{
         "type": "command",
         "command": $hook,
@@ -199,7 +199,7 @@ if [ "$ENABLE_MEMORY" = true ]; then
       select(.hooks | all(.command | contains("track-activity") | not))
     ] |
     .hooks.PostToolUse += [{
-      "matcher": {},
+      "matcher": "*",
       "hooks": [{
         "type": "command",
         "command": $activity,
@@ -221,7 +221,7 @@ else
     ] |
     # Add the new hook with matcher format
     .hooks.UserPromptSubmit += [{
-      "matcher": {},
+      "matcher": "*",
       "hooks": [{
         "type": "command",
         "command": $hook,
