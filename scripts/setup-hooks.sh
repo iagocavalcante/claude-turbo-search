@@ -29,8 +29,19 @@ elif [ "$1" = "--remove" ]; then
   echo "Removing turbo-search hooks..."
 
   if [ -f "$SETTINGS_FILE" ]; then
-    # Remove our hooks from the hooks array
-    UPDATED=$(jq 'if .hooks then .hooks = [.hooks[] | select(.command | (contains("pre-prompt-search") or contains("rag-context-hook")) | not)] else . end' "$SETTINGS_FILE" 2>/dev/null || cat "$SETTINGS_FILE")
+    # Remove our hooks from UserPromptSubmit (new format with matchers)
+    UPDATED=$(jq '
+      if .hooks.UserPromptSubmit then
+        .hooks.UserPromptSubmit = [
+          .hooks.UserPromptSubmit[] |
+          select(.hooks | all(.command | (contains("pre-prompt-search") or contains("rag-context-hook")) | not))
+        ] |
+        # Remove empty UserPromptSubmit array
+        if (.hooks.UserPromptSubmit | length) == 0 then del(.hooks.UserPromptSubmit) else . end |
+        # Remove empty hooks object
+        if (.hooks | keys | length) == 0 then del(.hooks) else . end
+      else . end
+    ' "$SETTINGS_FILE" 2>/dev/null || cat "$SETTINGS_FILE")
     echo "$UPDATED" > "$SETTINGS_FILE"
     echo -e "${GREEN}✓${NC} Hooks removed from settings.json"
   fi
@@ -90,8 +101,8 @@ echo "Hook type: $HOOK_DESC"
 echo "Hook script: $HOOK_SCRIPT"
 echo ""
 
-# Check if any turbo-search hooks are already configured
-EXISTING_HOOK=$(jq -r '.hooks[]? | select(.command | (contains("pre-prompt-search") or contains("rag-context-hook"))) | .command' "$SETTINGS_FILE" 2>/dev/null | head -1)
+# Check if any turbo-search hooks are already configured (new format)
+EXISTING_HOOK=$(jq -r '.hooks.UserPromptSubmit[]?.hooks[]? | select(.command | (contains("pre-prompt-search") or contains("rag-context-hook"))) | .command' "$SETTINGS_FILE" 2>/dev/null | head -1)
 if [ -n "$EXISTING_HOOK" ]; then
   echo -e "${YELLOW}Warning: Existing turbo-search hook found${NC}"
   echo "  Current: $EXISTING_HOOK"
@@ -105,17 +116,25 @@ if [ -n "$EXISTING_HOOK" ]; then
   echo -e "${GREEN}✓${NC} Backed up settings to $BACKUP_SETTINGS"
 fi
 
-# Remove existing turbo-search hooks and add the new one
+# Remove existing turbo-search hooks and add the new one (new format with matchers)
 UPDATED=$(jq --arg hook "$HOOK_SCRIPT" '
-  # Initialize hooks array if it does not exist
-  .hooks = (.hooks // []) |
+  # Initialize hooks object if it does not exist
+  .hooks = (.hooks // {}) |
+  # Initialize UserPromptSubmit array if it does not exist
+  .hooks.UserPromptSubmit = (.hooks.UserPromptSubmit // []) |
   # Remove existing turbo-search hooks
-  .hooks = [.hooks[] | select(.command | (contains("pre-prompt-search") or contains("rag-context-hook")) | not)] |
-  # Add the new hook
-  .hooks += [{
-    "event": "UserPromptSubmit",
-    "command": $hook,
-    "timeout": 10000
+  .hooks.UserPromptSubmit = [
+    .hooks.UserPromptSubmit[] |
+    select(.hooks | all(.command | (contains("pre-prompt-search") or contains("rag-context-hook")) | not))
+  ] |
+  # Add the new hook with matcher format
+  .hooks.UserPromptSubmit += [{
+    "matcher": {},
+    "hooks": [{
+      "type": "command",
+      "command": $hook,
+      "timeout": 10000
+    }]
   }]
 ' "$SETTINGS_FILE")
 
