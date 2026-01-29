@@ -1,0 +1,25 @@
+{
+  "name": "claude-turbo-search",
+  "version": "1.0.0",
+  "description": "Optimized file search and semantic indexing for large codebases in Claude Code",
+  "author": "Iago Cavalcante",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "search",
+    "qmd",
+    "semantic-search",
+    "ripgrep",
+    "fzf"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iagocavalcante/claude-turbo-search"
+  },
+  "claude-code": {
+    "skills": [
+      "skills/turbo-index.md"
+    ]
+  }
+}
