@@ -1,0 +1,16 @@
+{
+  "provider": "ollama",
+  "model": "bge-small-en",
+  "dimension": 384,
+  "ollama": {
+    "host": "http://localhost:11434"
+  },
+  "openai": {
+    "api_key": "",
+    "model": "text-embedding-3-small"
+  },
+  "voyage": {
+    "api_key": "",
+    "model": "voyage-3-lite"
+  }
+}
