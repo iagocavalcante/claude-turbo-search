@@ -1,3 +1,8 @@
+---
+name: remember
+description: Save the current work session to persistent memory for future context. Summarizes accomplishments, tracks files modified, and stores learnings for cross-session continuity.
+---
+
 # /remember - Save Session to Memory
 
 Summarize the current work session and save it to persistent memory for future context.

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://agentskills.io/schemas/marketplace.json",
+  "name": "claude-turbo-search",
+  "displayName": "Claude Turbo Search",
+  "version": "1.0.0",
+  "description": "Optimized file search and semantic indexing for large codebases. Saves 60-80% tokens on exploration tasks using QMD semantic search and fast file suggestions.",
+  "author": {
+    "name": "Iago Cavalcante",
+    "url": "https://github.com/iagocavalcante"
+  },
+  "repository": "https://github.com/iagocavalcante/claude-turbo-search",
+  "license": "MIT",
+  "keywords": [
+    "search",
+    "semantic-search",
+    "qmd",
+    "indexing",
+    "token-savings",
+    "codebase",
+    "documentation"
+  ],
+  "skills": [
+    {
+      "path": "skills/turbo-index",
+      "name": "turbo-index",
+      "description": "Index the current project for optimized search"
+    },
+    {
+      "path": "skills/qmd",
+      "name": "qmd",
+      "description": "Search docs before reading to save tokens"
+    },
+    {
+      "path": "skills/remember",
+      "name": "remember",
+      "description": "Save session to persistent memory"
+    },
+    {
+      "path": "skills/memory-stats",
+      "name": "memory-stats",
+      "description": "View memory database statistics"
+    }
+  ],
+  "dependencies": {
+    "required": ["ripgrep", "fzf", "jq"],
+    "optional": ["bun", "qmd"]
+  },
+  "platforms": ["macos", "linux"],
+  "minClaudeCodeVersion": "1.0.0"
+}
