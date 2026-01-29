@@ -15,11 +15,13 @@ MAX_CONTEXT_TOKENS=1500  # Approximate max tokens to inject
 MAX_CODE_RESULTS=3       # Max number of code search results
 MIN_QUERY_LENGTH=15      # Min prompt length to trigger search
 MEMORY_TOKEN_BUDGET=500  # Tokens allocated to memory context
+USE_VECTOR_SEARCH=true   # Use semantic search when available
 
 # Find plugin directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 MEMORY_SCRIPT="$PLUGIN_DIR/memory/memory-db.sh"
+EMBEDDINGS_SCRIPT="$PLUGIN_DIR/memory/embeddings.sh"
 
 # Find repo root for per-repo memory
 find_repo_root() {
@@ -72,7 +74,15 @@ fi
 # PHASE 1: Query persistent memory
 # ============================================
 MEMORY_CONTEXT=""
+VECTOR_RESULTS=""
+
 if [ -x "$MEMORY_SCRIPT" ]; then
+  # Try vector search first if enabled and available
+  if [ "$USE_VECTOR_SEARCH" = true ]; then
+    VECTOR_RESULTS=$("$MEMORY_SCRIPT" vsearch "$SEARCH_QUERY" 5 2>/dev/null || echo "")
+  fi
+
+  # Also get structured context (facts, knowledge, recent sessions)
   MEMORY_CONTEXT=$("$MEMORY_SCRIPT" context "$SEARCH_QUERY" $MEMORY_TOKEN_BUDGET 2>/dev/null || echo "")
 fi
 
@@ -151,7 +161,7 @@ fi
 # ============================================
 
 # Check if we have any context to output
-if [ -n "$MEMORY_CONTEXT" ] || [ -n "$CONTEXT" ]; then
+if [ -n "$MEMORY_CONTEXT" ] || [ -n "$CONTEXT" ] || [ -n "$VECTOR_RESULTS" ]; then
   echo ""
   echo "<relevant-context source=\"turbo-search-rag\">"
   echo "The following context was automatically retrieved based on your prompt."
@@ -160,7 +170,16 @@ if [ -n "$MEMORY_CONTEXT" ] || [ -n "$CONTEXT" ]; then
   echo "**Search terms:** $SEARCH_QUERY"
   echo ""
 
-  # Output memory context first (higher priority)
+  # Output semantic search results first (highest relevance)
+  if [ -n "$VECTOR_RESULTS" ] && ! echo "$VECTOR_RESULTS" | grep -q "Falling back"; then
+    echo "---"
+    echo "# Semantic Matches"
+    echo ""
+    echo "$VECTOR_RESULTS"
+    echo ""
+  fi
+
+  # Output memory context (structured knowledge)
   if [ -n "$MEMORY_CONTEXT" ]; then
     echo "---"
     echo "# Memory Context"
