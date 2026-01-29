@@ -1,6 +1,6 @@
 ---
 name: turbo-index
-description: Index the current project for optimized search with QMD semantic search and fast file suggestions. Run this when entering a new codebase or after significant changes.
+description: Index the current project for optimized search with QMD semantic search and fast file suggestions. Run this when entering a new codebase or after significant changes. Saves 60-80% tokens on exploration tasks.
 ---
 
 # Turbo Index
@@ -120,15 +120,15 @@ TOTAL_FILES=$(rg --files --follow --hidden . 2>/dev/null | wc -l | tr -d ' ')
 MD_FILES=$(rg --files --glob "**/*.md" . 2>/dev/null | wc -l | tr -d ' ')
 
 echo ""
-echo "📊 Project \"$PROJECT_NAME\" indexed"
+echo "Project \"$PROJECT_NAME\" indexed"
 echo "   Total files: $TOTAL_FILES"
 echo "   Markdown docs: $MD_FILES"
 echo "   Estimated token savings: 60-80% on exploration"
 echo ""
-echo "✓ QMD semantic search ready"
-echo "✓ Turbo file suggestion active"
+echo "QMD semantic search ready"
+echo "Turbo file suggestion active"
 echo ""
-echo "💡 Pro tip: Use 'qmd search \"query\"' to find files BEFORE reading them"
+echo "Pro tip: Use 'qmd search \"query\"' to find files BEFORE reading them"
 echo "   This saves tokens by only reading relevant content."
 echo ""
 echo "Try: qmd search \"authentication\" --files"

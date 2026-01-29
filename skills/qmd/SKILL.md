@@ -1,6 +1,6 @@
 ---
 name: qmd
-description: Local hybrid search for markdown notes and docs. Use BEFORE reading files to save tokens - search first, read only what's relevant.
+description: Local hybrid search for markdown notes and docs. Use BEFORE reading files to save tokens - search first, read only what's relevant. Provides 90% token savings on exploration tasks.
 ---
 
 # qmd - Quick Markdown Search

@@ -19,8 +19,10 @@
   },
   "claude-code": {
     "skills": [
-      "skills/turbo-index.md",
-      "skills/qmd.md"
+      "skills/turbo-index",
+      "skills/qmd",
+      "skills/remember",
+      "skills/memory-stats"
     ]
   }
 }

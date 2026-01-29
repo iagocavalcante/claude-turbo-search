@@ -1,3 +1,8 @@
+---
+name: memory-stats
+description: View statistics and recent entries from the persistent memory database. Shows session count, knowledge areas, facts, and recent activity.
+---
+
 # /memory-stats - View Memory Statistics
 
 Show statistics and recent entries from the persistent memory database.
