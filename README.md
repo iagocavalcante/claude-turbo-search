@@ -31,30 +31,54 @@ Optimized file search and semantic indexing for large codebases in Claude Code.
 
 ## Installation
 
-### Option 1: Clone and link (development)
+### Option 1: Install from GitHub (recommended)
+
+Add the repository as a marketplace and install:
 
 ```bash
-git clone https://github.com/iagocavalcante/claude-turbo-search.git ~/claude-turbo-search
-cd ~/claude-turbo-search
+# Add the marketplace from GitHub (use #branch for specific branch)
+claude plugin marketplace add iagocavalcante/claude-turbo-search
+
+# Or install from a specific branch
+claude plugin marketplace add "iagocavalcante/claude-turbo-search#feature/vector-search-rag"
+
+# Install the plugin
+claude plugin install claude-turbo-search@claude-turbo-search-dev
+
+# Restart Claude Code to load the plugin
 ```
 
-Add to your `~/.claude/settings.json`:
-
-```json
-{
-  "enabledPlugins": {
-    "claude-turbo-search@local": true
-  },
-  "pluginPaths": {
-    "claude-turbo-search@local": "~/claude-turbo-search"
-  }
-}
-```
-
-### Option 2: From marketplace (when published)
+### Option 2: From official marketplace (when published)
 
 ```bash
-claude plugins install claude-turbo-search
+claude plugin install claude-turbo-search
+```
+
+### Updating the Plugin
+
+When updates are available:
+
+```bash
+# Update the marketplace to fetch latest changes
+claude plugin marketplace update claude-turbo-search-dev
+
+# Update the plugin
+claude plugin update claude-turbo-search@claude-turbo-search-dev
+
+# Restart Claude Code to apply updates
+```
+
+### Verify Installation
+
+```bash
+claude plugin list
+```
+
+You should see:
+```
+❯ claude-turbo-search@claude-turbo-search-dev
+  Version: 1.0.0
+  Status: ✔ enabled
 ```
 
 ## Usage
@@ -80,6 +104,16 @@ Running `/turbo-index` again will:
 - Skip global configuration
 - Refresh the project index if files changed
 
+### Available Skills
+
+| Skill | Description |
+|-------|-------------|
+| `/turbo-index` | Set up optimized search indexing for a project |
+| `/qmd` | Search docs before reading to save tokens |
+| `/remember` | Save session context to persistent memory |
+| `/memory-stats` | View memory database statistics |
+| `/token-stats` | Show token economics and savings dashboard |
+
 ### Using the QMD Skill
 
 After indexing, use `/qmd` or just ask Claude to search:
@@ -90,6 +124,23 @@ After indexing, use `/qmd` or just ask Claude to search:
 ```
 
 Claude will use QMD to find relevant files **before** reading them, saving significant tokens.
+
+### Using Memory Skills
+
+Track your work across sessions:
+
+```bash
+# At end of session, save context to memory
+/remember
+
+# View accumulated knowledge
+/memory-stats
+
+# See token savings in action
+/token-stats
+```
+
+The memory system uses SQLite FTS5 for instant search across all your saved sessions, knowledge, and facts.
 
 ### Manual QMD Commands
 
