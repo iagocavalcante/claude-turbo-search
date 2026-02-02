@@ -1,0 +1,20 @@
+{
+  "name": "claude-turbo-search-dev",
+  "description": "Development marketplace for Claude Turbo Search plugin",
+  "owner": {
+    "name": "Iago Cavalcante",
+    "url": "https://github.com/iagocavalcante"
+  },
+  "plugins": [
+    {
+      "name": "claude-turbo-search",
+      "description": "Optimized file search and semantic indexing for large codebases in Claude Code",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Iago Cavalcante",
+        "url": "https://github.com/iagocavalcante"
+      }
+    }
+  ]
+}
