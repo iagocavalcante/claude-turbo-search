@@ -39,6 +39,11 @@
       "path": "skills/memory-stats",
       "name": "memory-stats",
       "description": "View memory database statistics"
+    },
+    {
+      "path": "skills/token-stats",
+      "name": "token-stats",
+      "description": "Show token economics and savings dashboard"
     }
   ],
   "dependencies": {

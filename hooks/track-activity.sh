@@ -58,7 +58,13 @@ case "$TOOL_NAME" in
         # Extract command (first 100 chars)
         COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null | head -c 100 || echo "")
         if [ -n "$COMMAND" ]; then
-            echo "$TIMESTAMP|$TOOL_NAME|$COMMAND" >> "$ACTIVITY_FILE"
+            # Track qmd searches specially for token economics
+            if echo "$COMMAND" | grep -qE "qmd (search|vsearch|query)"; then
+                QUERY=$(echo "$COMMAND" | sed -n 's/.*qmd \(search\|vsearch\|query\) ["'\'']\?\([^"'\'']*\)["'\'']\?.*/\2/p')
+                echo "$TIMESTAMP|SEARCH|$QUERY" >> "$ACTIVITY_FILE"
+            else
+                echo "$TIMESTAMP|$TOOL_NAME|$COMMAND" >> "$ACTIVITY_FILE"
+            fi
         fi
         ;;
 

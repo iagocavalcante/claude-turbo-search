@@ -22,7 +22,8 @@
       "skills/turbo-index",
       "skills/qmd",
       "skills/remember",
-      "skills/memory-stats"
+      "skills/memory-stats",
+      "skills/token-stats"
     ]
   }
 }
