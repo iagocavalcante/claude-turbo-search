@@ -36,11 +36,34 @@ fi
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
 
-# Total files in codebase
-TOTAL_FILES=$(find "$REPO_ROOT" -type f \( -name "*.ts" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.ex" -o -name "*.md" \) 2>/dev/null | wc -l | tr -d ' ')
+# Common exclusions for dependencies/build artifacts across languages
+EXCLUDES=(
+  # Node.js/JavaScript
+  --glob '!node_modules/' --glob '!bower_components/' --glob '!.npm/'
+  --glob '!.yarn/' --glob '!.pnpm-store/' --glob '!dist/' --glob '!build/' --glob '!coverage/'
+  # Elixir
+  --glob '!_build/' --glob '!deps/' --glob '!.elixir_ls/' --glob '!.fetch/'
+  # Java
+  --glob '!target/' --glob '!.gradle/' --glob '!.mvn/' --glob '!out/' --glob '!.settings/'
+  # Ruby
+  --glob '!vendor/' --glob '!.bundle/' --glob '!.gem/'
+  # PHP
+  --glob '!vendor/' --glob '!.composer/'
+  # Python
+  --glob '!__pycache__/' --glob '!.venv/' --glob '!venv/' --glob '!.tox/'
+  --glob '!.mypy_cache/' --glob '!.pytest_cache/' --glob '!*.egg-info/'
+  # General
+  --glob '!.git/'
+)
 
-# Estimate total tokens (rough: 1 line ≈ 10 tokens, avg file ≈ 100 lines)
-TOTAL_LINES=$(find "$REPO_ROOT" -type f \( -name "*.ts" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.ex" -o -name "*.md" \) -exec wc -l {} + 2>/dev/null | tail -1 | awk '{print $1}')
+# File types to count
+FILE_TYPES="--glob *.ts --glob *.js --glob *.tsx --glob *.jsx --glob *.py --glob *.go --glob *.rs --glob *.ex --glob *.exs --glob *.java --glob *.rb --glob *.php --glob *.md"
+
+# Total files in codebase (excluding dependencies)
+TOTAL_FILES=$(rg --files "${EXCLUDES[@]}" $FILE_TYPES "$REPO_ROOT" 2>/dev/null | wc -l | tr -d ' ')
+
+# Estimate total tokens (count lines in source files)
+TOTAL_LINES=$(rg --files "${EXCLUDES[@]}" $FILE_TYPES "$REPO_ROOT" 2>/dev/null | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
 ESTIMATED_TOTAL_TOKENS=$((TOTAL_LINES * 4 / 3))  # ~1.33 tokens per word, ~3 words per line
 
 echo ""

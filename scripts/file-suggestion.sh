@@ -31,7 +31,38 @@ fi
 # Fast file search with rg + fzf
 {
   # Main search - respects .gitignore, includes hidden files, follows symlinks
-  rg --files --follow --hidden . 2>/dev/null
+  # Explicitly exclude common dependency/build directories across languages
+  rg --files --follow --hidden \
+    --glob '!node_modules/' \
+    --glob '!bower_components/' \
+    --glob '!.npm/' \
+    --glob '!.yarn/' \
+    --glob '!.pnpm-store/' \
+    --glob '!dist/' \
+    --glob '!build/' \
+    --glob '!coverage/' \
+    --glob '!_build/' \
+    --glob '!deps/' \
+    --glob '!.elixir_ls/' \
+    --glob '!.fetch/' \
+    --glob '!target/' \
+    --glob '!.gradle/' \
+    --glob '!.mvn/' \
+    --glob '!out/' \
+    --glob '!.settings/' \
+    --glob '!vendor/' \
+    --glob '!.bundle/' \
+    --glob '!.composer/' \
+    --glob '!.gem/' \
+    --glob '!__pycache__/' \
+    --glob '!.venv/' \
+    --glob '!venv/' \
+    --glob '!.tox/' \
+    --glob '!.mypy_cache/' \
+    --glob '!.pytest_cache/' \
+    --glob '!*.egg-info/' \
+    --glob '!.git/' \
+    . 2>/dev/null
 
   # Always include important docs even if gitignored
   [ -e docs/CODEBASE_MAP.md ] && echo "docs/CODEBASE_MAP.md"

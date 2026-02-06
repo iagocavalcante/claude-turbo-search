@@ -115,9 +115,29 @@ Get indexing stats and report to user:
 ```bash
 PROJECT_NAME=$(basename "$PWD")
 
-# Count indexed files
-TOTAL_FILES=$(rg --files --follow --hidden . 2>/dev/null | wc -l | tr -d ' ')
-MD_FILES=$(rg --files --glob "**/*.md" . 2>/dev/null | wc -l | tr -d ' ')
+# Common exclusions for dependencies/build artifacts across languages
+EXCLUDES=(
+  # Node.js/JavaScript
+  --glob '!node_modules/' --glob '!bower_components/' --glob '!.npm/'
+  --glob '!.yarn/' --glob '!.pnpm-store/' --glob '!dist/' --glob '!build/' --glob '!coverage/'
+  # Elixir
+  --glob '!_build/' --glob '!deps/' --glob '!.elixir_ls/' --glob '!.fetch/'
+  # Java
+  --glob '!target/' --glob '!.gradle/' --glob '!.mvn/' --glob '!out/' --glob '!.settings/'
+  # Ruby
+  --glob '!vendor/' --glob '!.bundle/' --glob '!.gem/'
+  # PHP
+  --glob '!vendor/' --glob '!.composer/'
+  # Python (bonus)
+  --glob '!__pycache__/' --glob '!.venv/' --glob '!venv/' --glob '!.tox/'
+  --glob '!.mypy_cache/' --glob '!.pytest_cache/' --glob '!*.egg-info/'
+  # General
+  --glob '!.git/'
+)
+
+# Count indexed files (excluding dependencies)
+TOTAL_FILES=$(rg --files --follow --hidden "${EXCLUDES[@]}" . 2>/dev/null | wc -l | tr -d ' ')
+MD_FILES=$(rg --files --glob "**/*.md" "${EXCLUDES[@]}" . 2>/dev/null | wc -l | tr -d ' ')
 
 echo ""
 echo "Project \"$PROJECT_NAME\" indexed"
