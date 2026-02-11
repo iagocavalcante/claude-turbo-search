@@ -113,6 +113,7 @@ Running `/turbo-index` again will:
 | `/remember` | Save session context to persistent memory |
 | `/memory-stats` | View memory database statistics |
 | `/token-stats` | Show token economics and savings dashboard |
+| `/knowledge-graph` | Interactive TUI knowledge graph viewer for the memory database |
 
 ### Using the QMD Skill
 
@@ -141,6 +142,23 @@ Track your work across sessions:
 ```
 
 The memory system uses SQLite FTS5 for instant search across all your saved sessions, knowledge, and facts.
+
+### Knowledge Graph
+
+Visualize entity relationships in your memory database:
+
+```bash
+# Full dashboard (stats + graph + timeline)
+/knowledge-graph
+
+# Individual views
+/knowledge-graph stats           # Counts, categories, top entities bar chart
+/knowledge-graph graph           # Entity tree + relation edges + co-occurrences
+/knowledge-graph timeline        # Chronological session/knowledge entries
+/knowledge-graph explore auth    # Drill into a specific entity
+```
+
+Uses Rich for colored TUI output, with automatic plain-text fallback. See [docs/knowledge-graph-setup.md](docs/knowledge-graph-setup.md) for detailed setup.
 
 ### Manual QMD Commands
 
