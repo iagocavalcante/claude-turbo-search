@@ -23,7 +23,8 @@
       "skills/qmd",
       "skills/remember",
       "skills/memory-stats",
-      "skills/token-stats"
+      "skills/token-stats",
+      "skills/knowledge-graph"
     ]
   }
 }
