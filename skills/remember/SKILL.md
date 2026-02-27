@@ -94,6 +94,31 @@ If during the session you learned something important about the codebase that sh
 "$MEMORY_SCRIPT" add-fact "All API routes require authentication except /health" "convention"
 ```
 
+### 6.5. Save Token Metrics
+
+Before clearing the activity log, calculate and persist token metrics for this session:
+
+```bash
+PLUGIN_DIR="${PLUGIN_DIR:-$HOME/claude-turbo-search}"
+MEMORY_SCRIPT="$PLUGIN_DIR/memory/memory-db.sh"
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
+ACTIVITY_FILE="$REPO_ROOT/.claude-memory/activity.log"
+
+if [ -f "$MEMORY_SCRIPT" ] && [ -f "$ACTIVITY_FILE" ]; then
+    # Get the session ID just saved (most recent)
+    SESSION_ID=$("$MEMORY_SCRIPT" recent 1 2>/dev/null | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+
+    if [ -n "$SESSION_ID" ]; then
+        SEARCHES=$(grep -c "SEARCH:" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
+        READS=$(grep -c "|Read|" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
+        EDITS=$(grep -c "|Edit|" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
+        "$MEMORY_SCRIPT" add-token-metrics "$SESSION_ID" "$SEARCHES" "$READS" "$EDITS" 2>/dev/null || true
+    fi
+fi
+```
+
+This step is non-blocking — if memory-db.sh is unavailable or fails, the session save still succeeds.
+
 ### 7. Clear Activity Log
 
 After saving, clear the activity log:
