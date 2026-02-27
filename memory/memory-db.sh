@@ -29,6 +29,7 @@ CORE_COMMANDS=(
   entity-search
   stats
   token-stats
+  knowledge-graph
 )
 
 is_core_command() {

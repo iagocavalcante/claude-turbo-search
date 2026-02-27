@@ -9,21 +9,19 @@ Interactive TUI that visualizes the entity relationships, timelines, and statist
 
 ## Instructions
 
-When the user invokes `/knowledge-graph`, run the Python TUI viewer.
+When the user invokes `/knowledge-graph`, run the Go CLI viewer.
 
 ### 1. Resolve Paths
 
 ```bash
 PLUGIN_DIR="${PLUGIN_DIR:-$(find ~/.claude/plugins -name "claude-turbo-search" -type d 2>/dev/null | head -1)}"
 [ -z "$PLUGIN_DIR" ] && PLUGIN_DIR="$HOME/claude-turbo-search"
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-DB_PATH="$REPO_ROOT/.claude-memory/memory.db"
 ```
 
 ### 2. Run the Viewer
 
 ```bash
-python3 "$PLUGIN_DIR/skills/knowledge-graph/knowledge_graph.py" --db "$DB_PATH"
+"$PLUGIN_DIR/memory/memory-db.sh" knowledge-graph [subcommand] [entity]
 ```
 
 ### 3. Subcommands
@@ -38,19 +36,20 @@ Map user arguments to subcommands:
 
 ```bash
 # Examples:
-python3 "$PLUGIN_DIR/skills/knowledge-graph/knowledge_graph.py" --db "$DB_PATH" graph
-python3 "$PLUGIN_DIR/skills/knowledge-graph/knowledge_graph.py" --db "$DB_PATH" timeline
-python3 "$PLUGIN_DIR/skills/knowledge-graph/knowledge_graph.py" --db "$DB_PATH" stats
-python3 "$PLUGIN_DIR/skills/knowledge-graph/knowledge_graph.py" --db "$DB_PATH" explore auth
+"$PLUGIN_DIR/memory/memory-db.sh" knowledge-graph
+"$PLUGIN_DIR/memory/memory-db.sh" knowledge-graph stats
+"$PLUGIN_DIR/memory/memory-db.sh" knowledge-graph graph
+"$PLUGIN_DIR/memory/memory-db.sh" knowledge-graph timeline
+"$PLUGIN_DIR/memory/memory-db.sh" knowledge-graph explore auth
 ```
 
 ### 4. Present Output
 
-The script renders Rich TUI output directly to the terminal. Present the output as-is to the user. If the user asks about specific entities or relationships, use the `explore` subcommand to drill down.
+The command renders colored ANSI output directly to the terminal. Present the output as-is to the user. If the user asks about specific entities or relationships, use the `explore` subcommand to drill down.
 
 ## Notes
 
-- Requires Python 3.7+ and SQLite3 (both pre-installed on macOS/Linux)
-- Rich library is auto-installed if missing; falls back to plain text
+- Requires Go 1.22+ and SQLite3
+- No external Go dependencies — uses ANSI escape codes for colors
 - Run `/remember` first if the database is empty
 - Run `memory-db.sh init-metadata` if entity tables are missing

@@ -103,13 +103,20 @@ func (a *App) Execute(cmd string, args []string) error {
 		return a.CmdAddTokenMetrics(sessionID, searches, filesRead, filesEdited)
 	case "token-stats":
 		return a.CmdTokenStats()
+	case "knowledge-graph":
+		view := arg(args, 0)
+		if view == "" {
+			view = "full"
+		}
+		entity := arg(args, 1)
+		return a.CmdKnowledgeGraph(view, entity)
 	default:
 		return errors.New("unknown command")
 	}
 }
 
 func Usage() string {
-	return "Usage: memorydb {init|init-vector|init-metadata|init-token-metrics|search|vsearch|add-session|add-knowledge|add-fact|add-token-metrics|recent|context|embed|consolidate|entity-search|stats|token-stats}"
+	return "Usage: memorydb {init|init-vector|init-metadata|init-token-metrics|search|vsearch|add-session|add-knowledge|add-fact|add-token-metrics|recent|context|embed|consolidate|entity-search|stats|token-stats|knowledge-graph}"
 }
 
 func arg(args []string, idx int) string {
