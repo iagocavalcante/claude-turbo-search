@@ -84,6 +84,10 @@ if [ -f "$MEMORY_SCRIPT" ]; then
     echo ""
     echo "=== Memory Stats ==="
     "$MEMORY_SCRIPT" stats 2>/dev/null || echo "Run /turbo-index first to initialize memory"
+
+    echo ""
+    echo "=== Token Metrics (All-Time) ==="
+    "$MEMORY_SCRIPT" token-stats 2>/dev/null || echo "{}"
 fi
 ```
 
@@ -128,13 +132,16 @@ Based on the gathered data, calculate and present:
 ║                   HISTORICAL (ALL SESSIONS)                   ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                               ║
-║  Total sessions:         [N]                                  ║
-║  Total files tracked:    [M]                                  ║
-║  Knowledge entries:      [K]                                  ║
-║  Facts stored:           [F]                                  ║
+║  Tracked sessions:       [N]   (from token-stats JSON)       ║
+║  Total searches:         [S]                                  ║
+║  Total files read:       [R]                                  ║
+║  Total files edited:     [E]                                  ║
 ║                                                               ║
-║  Cumulative savings:     ~[X] tokens                         ║
-║  (Based on [S] search-first explorations)                    ║
+║  All-time tokens used:   ~[U] tokens                         ║
+║  All-time without plugin:~[W] tokens                         ║
+║  All-time tokens saved:  ~[V] tokens                         ║
+║                                                               ║
+║  (No data yet? Use /remember to start tracking)              ║
 ║                                                               ║
 ╚══════════════════════════════════════════════════════════════╝
 ```

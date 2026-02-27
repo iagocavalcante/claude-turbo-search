@@ -44,6 +44,11 @@
       "path": "skills/token-stats",
       "name": "token-stats",
       "description": "Show token economics and savings dashboard"
+    },
+    {
+      "path": "skills/knowledge-graph",
+      "name": "knowledge-graph",
+      "description": "Interactive TUI knowledge graph viewer for memory database"
     }
   ],
   "dependencies": {
