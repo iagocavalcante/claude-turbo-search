@@ -114,6 +114,8 @@ Running `/turbo-index` again will:
 | `/memory-stats` | View memory database statistics |
 | `/token-stats` | Show token economics and savings dashboard |
 | `/knowledge-graph` | Interactive TUI knowledge graph viewer for the memory database |
+| `/push` | Manually upload memory database to your self-hosted dashboard |
+| `/pull` | Download memory database from your self-hosted dashboard (fresh-clone restore) |
 
 ### Using the QMD Skill
 
