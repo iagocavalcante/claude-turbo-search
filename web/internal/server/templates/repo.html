@@ -1,0 +1,52 @@
+{{define "title"}}{{.Slug}} · claude-turbo-search{{end}}
+{{define "main"}}
+  <div style="display:flex; align-items:baseline; gap:16px;">
+    <h2 style="margin:0;">{{.Slug}}</h2>
+    <a href="/repos/{{.Slug}}/graph">view graph →</a>
+  </div>
+  <p class="muted">Last sync: {{.LastSyncDisplay}} · {{len .Sessions}} sessions · {{len .Knowledge}} areas · {{len .Facts}} facts</p>
+
+  <h2>Recent Sessions</h2>
+  {{if .Sessions}}
+    {{range .Sessions}}
+      <div class="card">
+        <div class="muted" style="font-size:12px;">#{{.ID}} · {{.CreatedAtDisplay}}</div>
+        <div style="margin-top:6px;">{{.Summary}}</div>
+        {{if .Topics}}<div style="margin-top:6px;">{{range .TopicList}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
+      </div>
+    {{end}}
+  {{else}}
+    <div class="empty">No sessions recorded.</div>
+  {{end}}
+
+  <h2>Knowledge Areas</h2>
+  {{if .Knowledge}}
+    {{range .Knowledge}}
+      <div class="card">
+        <div><strong>{{.Area}}</strong></div>
+        <div style="margin-top:6px;">{{.Summary}}</div>
+        {{if .Patterns}}<div class="muted" style="margin-top:6px;">{{.Patterns}}</div>{{end}}
+      </div>
+    {{end}}
+  {{else}}
+    <div class="empty">No knowledge entries.</div>
+  {{end}}
+
+  <h2>Facts</h2>
+  {{if .Facts}}
+    <table>
+      <thead><tr><th>Fact</th><th>Category</th><th>When</th></tr></thead>
+      <tbody>
+      {{range .Facts}}
+        <tr>
+          <td>{{.Fact}}</td>
+          <td><span class="tag">{{.Category}}</span></td>
+          <td class="muted">{{.CreatedAtDisplay}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  {{else}}
+    <div class="empty">No facts recorded.</div>
+  {{end}}
+{{end}}

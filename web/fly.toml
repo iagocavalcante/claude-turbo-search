@@ -1,0 +1,38 @@
+# fly.toml app configuration file generated for claude-turbo-search on 2026-05-02T13:31:40-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'claude-turbo-search'
+primary_region = 'gru'
+
+[build]
+
+[env]
+  DATA_DIR = '/data'
+  PORT = '8080'
+
+[[mounts]]
+  source = 'turbo_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '5s'
+    method = 'GET'
+    path = '/health'
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256

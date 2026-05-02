@@ -1,0 +1,32 @@
+{{define "title"}}repos · claude-turbo-search{{end}}
+{{define "main"}}
+  <h2>Synced Repos</h2>
+  {{if .Repos}}
+    <table>
+      <thead>
+        <tr>
+          <th>Slug</th>
+          <th>Last Sync</th>
+          <th>Sessions</th>
+          <th>Knowledge</th>
+          <th>Facts</th>
+          <th>Size</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{range .Repos}}
+        <tr>
+          <td><a href="/repos/{{.Slug}}">{{.Slug}}</a></td>
+          <td class="muted">{{.LastSyncDisplay}}</td>
+          <td>{{.Sessions}}</td>
+          <td>{{.Areas}}</td>
+          <td>{{.Facts}}</td>
+          <td class="muted">{{.SizeKB}} KB</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  {{else}}
+    <div class="empty">No repos synced yet. Run <code>memorydb push</code> from a repo with a configured remote.</div>
+  {{end}}
+{{end}}

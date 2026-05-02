@@ -240,6 +240,32 @@ Total: 250 tokens
 
 **Estimated savings: 60-80% on exploration tasks**
 
+## Sync to a personal web dashboard
+
+Run a single-user dashboard on Fly.io's free tier and have every `/remember` invocation auto-push your `memory.db` to it. You then get a browser view of every repo you work in: recent sessions, knowledge areas, facts, and an interactive D3 force-directed knowledge graph.
+
+[![Deploy on Fly.io](https://fly.io/static/images/launch/deploy-on-fly.svg)](https://fly.io/launch?repo=https://github.com/iagocavalcante/claude-turbo-search)
+
+The button takes you to Fly's launch flow. Because the deploy artifact lives at `web/`, the launch command is:
+
+```bash
+git clone https://github.com/iagocavalcante/claude-turbo-search.git
+cd claude-turbo-search/web
+fly launch --copy-config --no-deploy
+fly secrets set TURBO_TOKEN=$(openssl rand -hex 32)
+fly deploy
+```
+
+Then point the CLI at it once:
+
+```bash
+~/claude-turbo-search/memory/memory-db.sh config set \
+    --remote https://<your-app>.fly.dev \
+    --token <your-token>
+```
+
+After this, `/remember` will silently push to your dashboard whenever it runs. The full architecture, deferred work, and operating notes live in [`docs/plans/web-sync.md`](docs/plans/web-sync.md) and [`web/README.md`](web/README.md).
+
 ## Configuration
 
 After running `/turbo-index`, these files are modified:

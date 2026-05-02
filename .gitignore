@@ -1,8 +1,13 @@
 .DS_Store
 .claude/
+.claude-memory/
 node_modules/
 *.log
 .vscode/
 .idea/
 *.swp
 *~
+
+# Compiled Go binaries (built locally, deployed via Docker)
+memory/memorydb
+web/cmd/server/server

@@ -30,6 +30,8 @@ CORE_COMMANDS=(
   stats
   token-stats
   knowledge-graph
+  config
+  push
 )
 
 is_core_command() {

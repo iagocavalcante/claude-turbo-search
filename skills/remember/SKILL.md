@@ -119,6 +119,18 @@ fi
 
 This step is non-blocking — if memory-db.sh is unavailable or fails, the session save still succeeds.
 
+### 6.6. Push to Remote Dashboard (Optional)
+
+If the user has configured a personal web dashboard with `memory-db.sh config set`, sync the updated database to it:
+
+```bash
+"$MEMORY_SCRIPT" push 2>/dev/null || true
+```
+
+This step is non-blocking — failures are silent. When no remote is configured, `push` exits with a clear error that we discard. When a remote *is* configured, the gzipped database is uploaded so the dashboard reflects this session immediately.
+
+See [`docs/plans/web-sync.md`](../../docs/plans/web-sync.md) for the dashboard architecture and `web/README.md` for deploy instructions.
+
 ### 7. Clear Activity Log
 
 After saving, clear the activity log:

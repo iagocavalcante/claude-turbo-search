@@ -1,0 +1,112 @@
+{{define "title"}}graph · {{.Slug}}{{end}}
+{{define "main"}}
+  <div style="display:flex; align-items:baseline; gap:16px; margin-bottom:16px;">
+    <h2 style="margin:0;">{{.Slug}}</h2>
+    <a href="/repos/{{.Slug}}">← back to detail</a>
+  </div>
+
+  <div id="graph-empty" class="empty" style="display:none;">
+    No graph data. <code>entity_metadata</code> is populated by <code>/remember</code> as it extracts entities from your work.
+  </div>
+
+  <div style="border:1px solid var(--border); border-radius:6px; background:var(--card); position:relative;">
+    <svg id="graph" width="100%" height="640" style="display:block;"></svg>
+    <div id="legend" style="position:absolute; top:12px; right:12px; background:rgba(15,17,21,0.85); border:1px solid var(--border); border-radius:4px; padding:8px 12px; font-size:12px;">
+      <div style="margin-bottom:4px; color: var(--muted); text-transform:uppercase; letter-spacing:0.05em; font-size:11px;">legend</div>
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#7aa2f7;margin-right:6px;"></span>session</div>
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#9ece6a;margin-right:6px;"></span>knowledge</div>
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e0af68;margin-right:6px;"></span>fact</div>
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f7768e;margin-right:6px;"></span>file</div>
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#bb9af7;margin-right:6px;"></span>concept</div>
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#73daca;margin-right:6px;"></span>package</div>
+    </div>
+    <div id="tooltip" style="position:absolute; pointer-events:none; background:rgba(15,17,21,0.95); border:1px solid var(--border); border-radius:4px; padding:6px 10px; font-size:12px; display:none; max-width:340px;"></div>
+  </div>
+
+  <p class="muted" style="margin-top:12px; font-size:12px;">drag nodes to rearrange · scroll to zoom · click outside to pan</p>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script>
+  (async () => {
+    const slug = {{.Slug}};
+    const res = await fetch(`/api/repos/${slug}/graph`, { credentials: "same-origin" });
+    if (!res.ok) {
+      document.getElementById("graph-empty").textContent = "Failed to load graph: " + res.status;
+      document.getElementById("graph-empty").style.display = "block";
+      return;
+    }
+    const data = await res.json();
+    if (!data.nodes || !data.nodes.length) {
+      document.getElementById("graph").style.display = "none";
+      document.getElementById("graph-empty").style.display = "block";
+      return;
+    }
+
+    const colorFor = (node) => {
+      if (node.kind === "session") return "#7aa2f7";
+      if (node.kind === "knowledge") return "#9ece6a";
+      if (node.kind === "fact") return "#e0af68";
+      if (node.subtype === "file") return "#f7768e";
+      if (node.subtype === "concept") return "#bb9af7";
+      if (node.subtype === "package") return "#73daca";
+      return "#8a8f99";
+    };
+    const radiusFor = (n) => 5 + Math.min(8, (n.ref_count || 0) * 1.2);
+
+    const svg = d3.select("#graph");
+    const width = svg.node().clientWidth;
+    const height = +svg.attr("height");
+
+    const container = svg.append("g");
+    svg.call(d3.zoom().scaleExtent([0.2, 4]).on("zoom", (e) => container.attr("transform", e.transform)));
+
+    const sim = d3.forceSimulation(data.nodes)
+      .force("link", d3.forceLink(data.edges).id(d => d.id).distance(80).strength(0.5))
+      .force("charge", d3.forceManyBody().strength(-180))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collide", d3.forceCollide().radius(d => radiusFor(d) + 4));
+
+    const link = container.append("g")
+      .attr("stroke", "#3b3f4d").attr("stroke-opacity", 0.6)
+      .selectAll("line").data(data.edges).join("line").attr("stroke-width", 1);
+
+    const node = container.append("g")
+      .selectAll("g").data(data.nodes).join("g")
+      .call(d3.drag()
+        .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+        .on("end", (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    node.append("circle")
+      .attr("r", radiusFor)
+      .attr("fill", colorFor)
+      .attr("stroke", "#0f1115").attr("stroke-width", 1.5);
+
+    node.append("text")
+      .text(d => d.label.length > 28 ? d.label.slice(0, 26) + "…" : d.label)
+      .attr("x", d => radiusFor(d) + 4).attr("y", 4)
+      .attr("font-size", 11).attr("fill", "#e6e6e6");
+
+    const tt = document.getElementById("tooltip");
+    node.on("mouseover", (e, d) => {
+      tt.style.display = "block";
+      tt.innerHTML = `<strong>${escapeHTML(d.label)}</strong><div class="muted" style="color:#8a8f99; margin-top:2px;">${d.kind}${d.subtype ? " · " + d.subtype : ""}${d.ref_count ? " · ×" + d.ref_count : ""}</div>`;
+    }).on("mousemove", (e) => {
+      const rect = svg.node().getBoundingClientRect();
+      tt.style.left = (e.clientX - rect.left + 12) + "px";
+      tt.style.top  = (e.clientY - rect.top  + 12) + "px";
+    }).on("mouseout", () => { tt.style.display = "none"; });
+
+    sim.on("tick", () => {
+      link
+        .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+      node.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+    function escapeHTML(s) {
+      return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    }
+  })();
+  </script>
+{{end}}

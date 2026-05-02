@@ -1,0 +1,58 @@
+{{define "base"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{block "title" .}}claude-turbo-search{{end}}</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --fg: #e6e6e6;
+      --muted: #8a8f99;
+      --accent: #7aa2f7;
+      --card: #161922;
+      --border: #232634;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    header a { color: var(--muted); text-decoration: none; }
+    header a:hover { color: var(--fg); }
+    main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+    h2 { margin-top: 32px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    a { color: var(--accent); }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 12px; }
+    .muted { color: var(--muted); }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--border); font-size: 12px; margin-right: 4px; }
+    .empty { color: var(--muted); font-style: italic; padding: 24px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><a href="/" style="color: var(--fg); text-decoration: none;">claude-turbo-search</a></h1>
+    <span class="muted">memory dashboard</span>
+  </header>
+  <main>
+    {{block "main" .}}{{end}}
+  </main>
+</body>
+</html>{{end}}
