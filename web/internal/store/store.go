@@ -18,12 +18,22 @@ import (
 var slugRE = regexp.MustCompile(`^[a-f0-9]{12}$`)
 
 type Repo struct {
-	Slug     string
-	LastSync time.Time
-	Sessions int
-	Facts    int
-	Areas    int
-	SizeKB   int64
+	Slug       string
+	Name       string
+	NameSource string // "auto" | "manual" | ""
+	LastSync   time.Time
+	Sessions   int
+	Facts      int
+	Areas      int
+	SizeKB     int64
+}
+
+// DisplayName returns Name if set, otherwise the slug — for UI fallback.
+func (r Repo) DisplayName() string {
+	if r.Name != "" {
+		return r.Name
+	}
+	return r.Slug
 }
 
 type Session struct {
@@ -83,6 +93,10 @@ func ListRepos(ctx context.Context, dataDir string) ([]Repo, error) {
 			repo.Sessions = stats.sessions
 			repo.Facts = stats.facts
 			repo.Areas = stats.areas
+		}
+		if meta, err := ReadMeta(dataDir, slug); err == nil && meta.Name != "" {
+			repo.Name = meta.Name
+			repo.NameSource = meta.NameSource
 		}
 		repos = append(repos, repo)
 	}

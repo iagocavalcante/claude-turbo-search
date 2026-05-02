@@ -250,3 +250,93 @@ func TestHealth_Returns200(t *testing.T) {
 		t.Fatalf("status = %d", w.Code)
 	}
 }
+
+func TestSetName_RequiresAuth(t *testing.T) {
+	s, _ := newServer(t)
+	r := httptest.NewRequest(http.MethodPut, "/api/repos/"+validSlug+"/name", strings.NewReader(`{"name":"x"}`))
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestSetName_HappyPath(t *testing.T) {
+	s, dir := newServer(t)
+	r := httptest.NewRequest(http.MethodPut, "/api/repos/"+validSlug+"/name", strings.NewReader(`{"name":"My Cool App"}`))
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "repos", validSlug+".meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"My Cool App"`) {
+		t.Errorf("meta missing name: %s", data)
+	}
+	if !strings.Contains(string(data), `"manual"`) {
+		t.Errorf("expected manual source: %s", data)
+	}
+}
+
+func TestSetName_RejectsEmpty(t *testing.T) {
+	s, _ := newServer(t)
+	r := httptest.NewRequest(http.MethodPut, "/api/repos/"+validSlug+"/name", strings.NewReader(`{"name":"   "}`))
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestSetName_LocksAgainstAutoPushes(t *testing.T) {
+	s, dir := newServer(t)
+	r := httptest.NewRequest(http.MethodPut, "/api/repos/"+validSlug+"/name", strings.NewReader(`{"name":"Manual Rename"}`))
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT failed: %d", w.Code)
+	}
+
+	pushReq := httptest.NewRequest(http.MethodPost, "/api/repos/"+validSlug+"/push", gzipped(t, "data"))
+	pushReq.Header.Set("Authorization", "Bearer "+token)
+	pushReq.Header.Set("Content-Encoding", "gzip")
+	pushReq.Header.Set("X-Repo-Name", "auto/name")
+	pushReq.Header.Set("X-Repo-Name-Source", "auto")
+	pw := httptest.NewRecorder()
+	s.Mux().ServeHTTP(pw, pushReq)
+	if pw.Code != http.StatusOK {
+		t.Fatalf("push failed: %d", pw.Code)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "repos", validSlug+".meta.json"))
+	if !strings.Contains(string(data), `"Manual Rename"`) {
+		t.Fatalf("manual name overwritten by auto push: %s", data)
+	}
+}
+
+func TestPush_AppliesAutoName(t *testing.T) {
+	s, dir := newServer(t)
+	pushReq := httptest.NewRequest(http.MethodPost, "/api/repos/"+validSlug+"/push", gzipped(t, "data"))
+	pushReq.Header.Set("Authorization", "Bearer "+token)
+	pushReq.Header.Set("Content-Encoding", "gzip")
+	pushReq.Header.Set("X-Repo-Name", "iagocavalcante/repo")
+	pushReq.Header.Set("X-Repo-Name-Source", "auto")
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, pushReq)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "repos", validSlug+".meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"iagocavalcante/repo"`) {
+		t.Errorf("name not applied: %s", data)
+	}
+}

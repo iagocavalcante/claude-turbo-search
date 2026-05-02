@@ -152,6 +152,21 @@ User then copies the URL + token into `memorydb config set`.
 - Slug is deterministic from `git remote get-url origin`, so the same repo on any machine ends up at the same path on the server.
 - 9 sync.Pull unit tests + 4 server-side endpoint tests + production round-trip (push → fresh clone → pull) verified byte-equal SHA-256.
 
+## v1.3.0 — `/push` and `/pull` slash commands (shipped)
+
+- Promoted the existing CLI subcommands to first-class Claude Code skills (`skills/push`, `skills/pull`).
+- No new code: skills shell out to the Go binary via `memory-db.sh`.
+
+## v1.4.0 — Repo names (shipped)
+
+- **Auto-derive**: client parses `git remote get-url origin` into `org/repo` and sends it as `X-Repo-Name` + `X-Repo-Name-Source: auto` on every push.
+- **Manual override**: `memorydb config set --name "My App"` makes the CLI send `X-Repo-Name-Source: manual` instead.
+- **Browser rename**: `PUT /api/repos/{slug}/name` (Bearer or Basic auth) sets `name_source: manual`. Inline rename form on the repo detail page.
+- **Storage**: per-slug sidecar `<DataDir>/repos/<slug>.meta.json` (atomic writes via temp + rename).
+- **Precedence**: a manual name (set via PUT or `--name`) is never overwritten by an auto-push. Auto names can be overwritten by other auto names.
+- **Display**: index lists names (slug shown smaller for renamed repos); detail page shows name as `<h2>` with `slug: ... · name: manual|auto` caption.
+- 16 new tests (parser, sidecar precedence, PUT endpoint, push header handling) + production round-trip verified end-to-end.
+
 ## Risks / things to watch
 
 - **Push size** — `memory.db` could grow large for active repos. Need gzip + size limit; consider incremental sync (WAL shipping) if files exceed ~50MB.

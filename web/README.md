@@ -49,7 +49,14 @@ From any repo where you use `/remember`:
 ~/claude-turbo-search/memory/memory-db.sh push
 ```
 
-After this, every `/remember` invocation auto-pushes the updated `memory.db` to your dashboard. No further config per repo.
+After this, every `/remember` invocation auto-pushes the updated `memory.db` to your dashboard. No further config per repo. Each push also sends an auto-derived `X-Repo-Name` (`org/repo` from your git origin), so the dashboard shows readable names instead of raw slugs from day one.
+
+### Custom name
+
+If `org/repo` isn't the label you want:
+
+- **Once via CLI**: `memory-db.sh config set --name "My Cool App"` — the CLI then sends this with every push and the server treats it as a manual rename (sticky).
+- **From the browser**: click `rename` next to the heading on `/repos/<slug>` and type a new name. Same effect — manual rename, sticks against future auto pushes.
 
 ## Pull on a fresh clone
 

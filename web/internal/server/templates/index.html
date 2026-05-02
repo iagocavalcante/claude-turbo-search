@@ -5,7 +5,7 @@
     <table>
       <thead>
         <tr>
-          <th>Slug</th>
+          <th>Repo</th>
           <th>Last Sync</th>
           <th>Sessions</th>
           <th>Knowledge</th>
@@ -16,7 +16,10 @@
       <tbody>
       {{range .Repos}}
         <tr>
-          <td><a href="/repos/{{.Slug}}">{{.Slug}}</a></td>
+          <td>
+            <a href="/repos/{{.Slug}}">{{.DisplayName}}</a>
+            {{if .Name}}<div class="muted" style="font-size:11px;">{{.Slug}}</div>{{end}}
+          </td>
           <td class="muted">{{.LastSyncDisplay}}</td>
           <td>{{.Sessions}}</td>
           <td>{{.Areas}}</td>

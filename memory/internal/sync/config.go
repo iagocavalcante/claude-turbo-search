@@ -12,6 +12,10 @@ import (
 type Config struct {
 	Remote string `json:"remote"`
 	Token  string `json:"token"`
+	// Name overrides the auto-derived "org/repo" label when pushing.
+	// When set, the server treats it as a manual rename and won't let
+	// future auto-pushes (with no override) overwrite it.
+	Name string `json:"name,omitempty"`
 }
 
 // DefaultPath returns the path to the user-level config file.

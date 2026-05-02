@@ -43,6 +43,9 @@ func (a *App) cmdConfigGet() error {
 	}
 	fmt.Printf("remote: %s\n", cfg.Remote)
 	fmt.Printf("token:  %s\n", sync.MaskToken(cfg.Token))
+	if cfg.Name != "" {
+		fmt.Printf("name:   %s (manual override)\n", cfg.Name)
+	}
 	return nil
 }
 
@@ -50,21 +53,47 @@ func (a *App) cmdConfigSet(args []string) error {
 	fs := flag.NewFlagSet("config set", flag.ContinueOnError)
 	remote := fs.String("remote", "", "remote URL (e.g., https://my-app.fly.dev)")
 	token := fs.String("token", "", "bearer token")
+	name := fs.String("name", "", "manual repo name override (sticks across pushes)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if strings.TrimSpace(*remote) == "" || strings.TrimSpace(*token) == "" {
-		return errors.New("both --remote and --token are required")
-	}
+
 	path, err := sync.DefaultPath()
 	if err != nil {
 		return err
 	}
-	if err := sync.Save(path, sync.Config{Remote: strings.TrimSpace(*remote), Token: strings.TrimSpace(*token)}); err != nil {
+	cfg, err := sync.Load(path)
+	if err != nil {
+		return err
+	}
+	if r := strings.TrimSpace(*remote); r != "" {
+		cfg.Remote = r
+	}
+	if t := strings.TrimSpace(*token); t != "" {
+		cfg.Token = t
+	}
+	// Allow blanking the name with --name "" by checking flag presence.
+	if isFlagSet(fs, "name") {
+		cfg.Name = strings.TrimSpace(*name)
+	}
+	if cfg.Remote == "" || cfg.Token == "" {
+		return errors.New("--remote and --token are required (at least once)")
+	}
+	if err := sync.Save(path, cfg); err != nil {
 		return err
 	}
 	fmt.Printf("Config saved to %s\n", path)
 	return nil
+}
+
+func isFlagSet(fs *flag.FlagSet, name string) bool {
+	found := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }
 
 func (a *App) cmdConfigUnset() error {
@@ -146,11 +175,20 @@ func (a *App) CmdPush() error {
 		return fmt.Errorf("could not determine repo origin: %w", err)
 	}
 	slug := sync.Slug(originURL)
+
+	name, source := cfg.Name, "manual"
+	if name == "" {
+		name = sync.RepoName(originURL)
+		source = "auto"
+	}
+
 	if err := sync.Push(sync.PushOptions{
-		Remote: cfg.Remote,
-		Token:  cfg.Token,
-		Slug:   slug,
-		DBPath: a.DBFile,
+		Remote:     cfg.Remote,
+		Token:      cfg.Token,
+		Slug:       slug,
+		DBPath:     a.DBFile,
+		Name:       name,
+		NameSource: source,
 	}); err != nil {
 		return err
 	}

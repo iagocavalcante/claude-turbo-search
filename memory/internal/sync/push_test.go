@@ -17,6 +17,8 @@ type capture struct {
 	auth        string
 	contentType string
 	encoding    string
+	name        string
+	nameSource  string
 	body        []byte
 }
 
@@ -29,6 +31,8 @@ func startCapture(t *testing.T, status int, respBody string) (*httptest.Server, 
 		c.auth = r.Header.Get("Authorization")
 		c.contentType = r.Header.Get("Content-Type")
 		c.encoding = r.Header.Get("Content-Encoding")
+		c.name = r.Header.Get("X-Repo-Name")
+		c.nameSource = r.Header.Get("X-Repo-Name-Source")
 		c.body, _ = io.ReadAll(r.Body)
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(respBody))
@@ -141,6 +145,41 @@ func TestPush_ValidatesRequiredFields(t *testing.T) {
 				t.Fatal("expected validation error")
 			}
 		})
+	}
+}
+
+func TestPush_SendsAutoNameHeaders(t *testing.T) {
+	srv, cap := startCapture(t, 200, "")
+	dbPath := writeDB(t, "x")
+
+	if err := Push(PushOptions{
+		Remote: srv.URL, Token: "t", Slug: "abc", DBPath: dbPath,
+		Name: "iagocavalcante/foo", NameSource: "auto",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if cap.name != "iagocavalcante/foo" {
+		t.Errorf("X-Repo-Name = %q", cap.name)
+	}
+	if cap.nameSource != "auto" {
+		t.Errorf("X-Repo-Name-Source = %q", cap.nameSource)
+	}
+}
+
+func TestPush_OmitsNameHeadersWhenEmpty(t *testing.T) {
+	srv, cap := startCapture(t, 200, "")
+	dbPath := writeDB(t, "x")
+
+	if err := Push(PushOptions{
+		Remote: srv.URL, Token: "t", Slug: "abc", DBPath: dbPath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if cap.name != "" {
+		t.Errorf("expected no X-Repo-Name, got %q", cap.name)
+	}
+	if cap.nameSource != "" {
+		t.Errorf("expected no X-Repo-Name-Source, got %q", cap.nameSource)
 	}
 }
 

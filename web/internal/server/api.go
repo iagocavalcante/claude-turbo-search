@@ -15,17 +15,20 @@ func (s *Server) handleAPIRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type item struct {
-		Slug     string    `json:"slug"`
-		LastSync time.Time `json:"last_sync"`
-		Sessions int       `json:"sessions"`
-		Knowledge int      `json:"knowledge"`
-		Facts    int       `json:"facts"`
-		SizeKB   int64     `json:"size_kb"`
+		Slug       string    `json:"slug"`
+		Name       string    `json:"name,omitempty"`
+		NameSource string    `json:"name_source,omitempty"`
+		LastSync   time.Time `json:"last_sync"`
+		Sessions   int       `json:"sessions"`
+		Knowledge  int       `json:"knowledge"`
+		Facts      int       `json:"facts"`
+		SizeKB     int64     `json:"size_kb"`
 	}
 	out := make([]item, 0, len(repos))
 	for _, r := range repos {
 		out = append(out, item{
-			Slug: r.Slug, LastSync: r.LastSync,
+			Slug: r.Slug, Name: r.Name, NameSource: r.NameSource,
+			LastSync: r.LastSync,
 			Sessions: r.Sessions, Knowledge: r.Areas, Facts: r.Facts, SizeKB: r.SizeKB,
 		})
 	}

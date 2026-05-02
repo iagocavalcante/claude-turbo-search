@@ -1,8 +1,9 @@
 {{define "title"}}graph · {{.Slug}}{{end}}
 {{define "main"}}
   <div style="display:flex; align-items:baseline; gap:16px; margin-bottom:16px;">
-    <h2 style="margin:0;">{{.Slug}}</h2>
+    <h2 style="margin:0;">{{.DisplayName}}</h2>
     <a href="/repos/{{.Slug}}">← back to detail</a>
+    <span class="muted" style="font-family: ui-monospace, monospace; font-size: 12px;">slug: {{.Slug}}</span>
   </div>
 
   <div id="graph-empty" class="empty" style="display:none;">

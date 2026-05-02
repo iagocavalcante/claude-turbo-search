@@ -1,10 +1,62 @@
 {{define "title"}}{{.Slug}} · claude-turbo-search{{end}}
 {{define "main"}}
-  <div style="display:flex; align-items:baseline; gap:16px;">
-    <h2 style="margin:0;">{{.Slug}}</h2>
+  <div style="display:flex; align-items:baseline; gap:16px; flex-wrap: wrap;">
+    <h2 id="repo-name" style="margin:0;">{{.DisplayName}}</h2>
+    <button id="rename-btn" type="button" style="background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:2px 8px; font:inherit; cursor:pointer;">rename</button>
     <a href="/repos/{{.Slug}}/graph">view graph →</a>
   </div>
+  <p class="muted" style="font-family: ui-monospace, monospace; font-size: 12px; margin: 4px 0 0 0;">slug: {{.Slug}}{{if .NameSource}} · name: {{.NameSource}}{{end}}</p>
   <p class="muted">Last sync: {{.LastSyncDisplay}} · {{len .Sessions}} sessions · {{len .Knowledge}} areas · {{len .Facts}} facts</p>
+
+  <div id="rename-form" style="display:none; margin-top:8px;">
+    <input id="rename-input" type="text" maxlength="100" placeholder="My project name"
+           style="background:var(--card); color:var(--fg); border:1px solid var(--border); border-radius:4px; padding:6px 10px; font:inherit; width:280px;">
+    <button id="rename-save" type="button" style="background:var(--accent); color:#0f1115; border:0; border-radius:4px; padding:6px 12px; font:inherit; cursor:pointer; margin-left:6px;">save</button>
+    <button id="rename-cancel" type="button" style="background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:4px; padding:6px 12px; font:inherit; cursor:pointer; margin-left:4px;">cancel</button>
+    <span id="rename-error" class="muted" style="color:#f7768e; margin-left:8px;"></span>
+  </div>
+
+  <script>
+  (() => {
+    const slug = {{.Slug}};
+    const btn = document.getElementById("rename-btn");
+    const form = document.getElementById("rename-form");
+    const input = document.getElementById("rename-input");
+    const save = document.getElementById("rename-save");
+    const cancel = document.getElementById("rename-cancel");
+    const err = document.getElementById("rename-error");
+    const heading = document.getElementById("repo-name");
+
+    btn.addEventListener("click", () => {
+      err.textContent = "";
+      input.value = heading.textContent;
+      form.style.display = "block";
+      input.focus();
+    });
+    cancel.addEventListener("click", () => { form.style.display = "none"; });
+    save.addEventListener("click", async () => {
+      err.textContent = "";
+      const name = input.value.trim();
+      if (!name) { err.textContent = "name is required"; return; }
+      const res = await fetch(`/api/repos/${slug}/name`, {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        err.textContent = `failed: ${res.status}`;
+        return;
+      }
+      heading.textContent = name;
+      form.style.display = "none";
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); save.click(); }
+      if (e.key === "Escape") { cancel.click(); }
+    });
+  })();
+  </script>
 
   <h2>Recent Sessions</h2>
   {{if .Sessions}}

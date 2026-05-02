@@ -45,11 +45,14 @@ type indexData struct {
 }
 
 type repoData struct {
-	Slug             string
-	LastSyncDisplay  string
-	Sessions         []sessionView
-	Knowledge        []store.Knowledge
-	Facts            []factView
+	Slug            string
+	Name            string
+	NameSource      string
+	DisplayName     string
+	LastSyncDisplay string
+	Sessions        []sessionView
+	Knowledge       []store.Knowledge
+	Facts           []factView
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +77,11 @@ func (s *Server) handleGraphPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid slug", http.StatusBadRequest)
 		return
 	}
-	renderPage(w, "graph.html", map[string]string{"Slug": slug})
+	display := slug
+	if meta, err := store.ReadMeta(s.DataDir, slug); err == nil && meta.Name != "" {
+		display = meta.Name
+	}
+	renderPage(w, "graph.html", map[string]string{"Slug": slug, "DisplayName": display})
 }
 
 func (s *Server) handleRepoPage(w http.ResponseWriter, r *http.Request) {
@@ -95,15 +102,24 @@ func (s *Server) handleRepoPage(w http.ResponseWriter, r *http.Request) {
 
 	repos, _ := store.ListRepos(ctx, s.DataDir)
 	var lastSync time.Time
-	for _, r := range repos {
-		if r.Slug == slug {
-			lastSync = r.LastSync
+	var matched store.Repo
+	for _, rr := range repos {
+		if rr.Slug == slug {
+			lastSync = rr.LastSync
+			matched = rr
 			break
 		}
 	}
 
+	display := slug
+	if matched.Name != "" {
+		display = matched.Name
+	}
 	data := repoData{
 		Slug:            slug,
+		Name:            matched.Name,
+		NameSource:      matched.NameSource,
+		DisplayName:     display,
 		LastSyncDisplay: humanizeTime(lastSync),
 		Sessions:        make([]sessionView, 0, len(sessions)),
 		Knowledge:       knowledge,

@@ -3,6 +3,7 @@ package server
 import (
 	"compress/gzip"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"claude-turbo-search/web/internal/store"
 )
 
 // Server holds the on-disk data directory and the bearer token required for push.
@@ -34,6 +37,7 @@ func New(dataDir, token string) (*Server, error) {
 func (s *Server) Mux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/repos/{slug}/push", s.handlePush)
+	mux.HandleFunc("PUT /api/repos/{slug}/name", s.requireAPIAuth(s.handleSetName))
 	mux.HandleFunc("GET /api/repos/{slug}/db", s.requireAPIAuth(s.handlePull))
 	mux.HandleFunc("GET /api/repos", s.requireAPIAuth(s.handleAPIRepos))
 	mux.HandleFunc("GET /api/repos/{slug}", s.requireAPIAuth(s.handleAPIRepoDetail))
@@ -133,8 +137,43 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Apply repo name from headers (auto on every push, manual locks against future auto pushes).
+	name := strings.TrimSpace(r.Header.Get("X-Repo-Name"))
+	if name != "" {
+		source := r.Header.Get("X-Repo-Name-Source")
+		if _, err := store.ApplyPushedName(s.DataDir, slug, name, source); err != nil {
+			// Don't fail the push for sidecar issues — log via Fly's stderr and continue.
+			fmt.Fprintf(os.Stderr, "warn: meta write failed for %s: %v\n", slug, err)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"ok":true,"slug":%q,"size":%d}`, slug, n)
+}
+
+func (s *Server) handleSetName(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	if !slugRE.MatchString(slug) {
+		writeJSONError(w, http.StatusBadRequest, "invalid slug")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		writeJSONError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if err := store.SetManualName(s.DataDir, slug, body.Name); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	meta, _ := store.ReadMeta(s.DataDir, slug)
+	writeJSON(w, http.StatusOK, meta)
 }
 
 func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {

@@ -15,7 +15,12 @@ type PushOptions struct {
 	Token  string
 	Slug   string
 	DBPath string
-	HTTP   *http.Client
+	// Name labels the repo on the dashboard. When NameSource is "auto"
+	// the server only fills the label if no manual name has been set.
+	// "manual" overrides any prior name.
+	Name       string
+	NameSource string // "auto" | "manual"
+	HTTP       *http.Client
 }
 
 // Push uploads opts.DBPath, gzipped, to {Remote}/api/repos/{Slug}/push.
@@ -54,6 +59,14 @@ func Push(opts PushOptions) error {
 	req.Header.Set("Authorization", "Bearer "+opts.Token)
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Content-Encoding", "gzip")
+	if opts.Name != "" {
+		req.Header.Set("X-Repo-Name", opts.Name)
+		src := opts.NameSource
+		if src == "" {
+			src = "auto"
+		}
+		req.Header.Set("X-Repo-Name-Source", src)
+	}
 
 	client := opts.HTTP
 	if client == nil {
