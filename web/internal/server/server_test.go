@@ -12,6 +12,72 @@ import (
 	"testing"
 )
 
+func TestPull_RequiresAuth(t *testing.T) {
+	s, _ := newServer(t)
+	r := httptest.NewRequest(http.MethodGet, "/api/repos/"+validSlug+"/db", nil)
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestPull_NotFoundForUnknownSlug(t *testing.T) {
+	s, _ := newServer(t)
+	r := httptest.NewRequest(http.MethodGet, "/api/repos/"+validSlug+"/db", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestPull_RejectsBadSlug(t *testing.T) {
+	s, _ := newServer(t)
+	r := httptest.NewRequest(http.MethodGet, "/api/repos/INVALID/db", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
+func TestPull_HappyPath_RoundTripsBytes(t *testing.T) {
+	s, _ := newServer(t)
+	body := "this-is-the-fake-sqlite-payload-for-roundtrip"
+
+	pushW := push(t, s, validSlug, "Bearer "+token, gzipped(t, body), "gzip")
+	if pushW.Code != http.StatusOK {
+		t.Fatalf("push failed: %d", pushW.Code)
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/api/repos/"+validSlug+"/db", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Mux().ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Content-Encoding") != "gzip" {
+		t.Errorf("missing gzip Content-Encoding")
+	}
+
+	gr, err := gzip.NewReader(w.Body)
+	if err != nil {
+		t.Fatalf("response not gzipped: %v", err)
+	}
+	got, err := io.ReadAll(gr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Fatalf("got %q, want %q", got, body)
+	}
+}
+
 const (
 	validSlug = "abcdef012345"
 	token     = "secret-token"

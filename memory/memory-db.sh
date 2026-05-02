@@ -32,6 +32,7 @@ CORE_COMMANDS=(
   knowledge-graph
   config
   push
+  pull
 )
 
 is_core_command() {

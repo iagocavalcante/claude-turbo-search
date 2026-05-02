@@ -2,7 +2,7 @@
   "$schema": "https://agentskills.io/schemas/marketplace.json",
   "name": "claude-turbo-search",
   "displayName": "Claude Turbo Search",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Optimized file search, semantic indexing, and persistent memory for large codebases. Saves 60-80% tokens on exploration tasks. Optionally sync your memory to a self-hosted web dashboard on Fly.io for cross-repo browsing and an interactive D3 knowledge graph.",
   "author": {
     "name": "Iago Cavalcante",

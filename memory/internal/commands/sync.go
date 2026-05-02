@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	"claude-turbo-search/memorydb/internal/sync"
@@ -75,6 +76,52 @@ func (a *App) cmdConfigUnset() error {
 		return err
 	}
 	fmt.Println("Config cleared.")
+	return nil
+}
+
+// CmdPull downloads the remote memory.db into the local repo.
+// Refuses to overwrite a non-empty local DB unless force is true.
+func (a *App) CmdPull(args []string) error {
+	fs := flag.NewFlagSet("pull", flag.ContinueOnError)
+	force := fs.Bool("force", false, "overwrite an existing local memory.db")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	path, err := sync.DefaultPath()
+	if err != nil {
+		return err
+	}
+	cfg, err := sync.Load(path)
+	if err != nil {
+		return err
+	}
+	if cfg.Remote == "" || cfg.Token == "" {
+		return errors.New("no sync remote configured. run `memorydb config set --remote URL --token TOKEN`")
+	}
+
+	originURL, err := sync.OriginURL(a.RepoRoot)
+	if err != nil {
+		return fmt.Errorf("could not determine repo origin: %w", err)
+	}
+	slug := sync.Slug(originURL)
+
+	if a.dbExists() && !*force {
+		info, _ := os.Stat(a.DBFile)
+		if info != nil && info.Size() > 0 {
+			return fmt.Errorf("local memory.db already exists at %s (%d bytes). pass --force to overwrite", a.DBFile, info.Size())
+		}
+	}
+
+	if err := os.MkdirAll(a.MemoryDir, 0o755); err != nil {
+		return err
+	}
+	if err := sync.Pull(sync.PullOptions{
+		Remote: cfg.Remote, Token: cfg.Token, Slug: slug, DBPath: a.DBFile,
+	}); err != nil {
+		return err
+	}
+	fmt.Printf("Pulled %s/api/repos/%s/db -> %s\n", strings.TrimRight(cfg.Remote, "/"), slug, a.DBFile)
 	return nil
 }
 

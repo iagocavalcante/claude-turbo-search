@@ -51,6 +51,20 @@ From any repo where you use `/remember`:
 
 After this, every `/remember` invocation auto-pushes the updated `memory.db` to your dashboard. No further config per repo.
 
+## Pull on a fresh clone
+
+When you clone a repo on a new machine and want the accumulated memory back for RAG/context:
+
+```bash
+# In the freshly cloned repo:
+~/claude-turbo-search/memory/memory-db.sh pull
+# Then immediately use it:
+~/claude-turbo-search/memory/memory-db.sh search "auth flow"
+~/claude-turbo-search/memory/memory-db.sh context "JWT refresh"
+```
+
+The slug is computed from `git remote get-url origin`, so you don't need any per-repo config — the same GitHub URL → same slug on any machine. If a local `.claude-memory/memory.db` already exists, `pull` refuses to overwrite without `--force` (no merge across machines in v1).
+
 ## How auth works
 
 - **`POST /api/repos/{slug}/push`**: Bearer token only. The CLI uses this.

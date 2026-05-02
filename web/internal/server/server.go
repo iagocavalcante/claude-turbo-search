@@ -34,6 +34,7 @@ func New(dataDir, token string) (*Server, error) {
 func (s *Server) Mux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/repos/{slug}/push", s.handlePush)
+	mux.HandleFunc("GET /api/repos/{slug}/db", s.requireAPIAuth(s.handlePull))
 	mux.HandleFunc("GET /api/repos", s.requireAPIAuth(s.handleAPIRepos))
 	mux.HandleFunc("GET /api/repos/{slug}", s.requireAPIAuth(s.handleAPIRepoDetail))
 	mux.HandleFunc("GET /api/repos/{slug}/graph", s.requireAPIAuth(s.handleAPIGraph))
@@ -134,6 +135,34 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"ok":true,"slug":%q,"size":%d}`, slug, n)
+}
+
+func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	if !slugRE.MatchString(slug) {
+		http.Error(w, "invalid slug", http.StatusBadRequest)
+		return
+	}
+	path := filepath.Join(s.DataDir, "repos", slug+".db")
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "open failed", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Encoding", "gzip")
+	gz := gzip.NewWriter(w)
+	defer gz.Close()
+	if _, err := io.Copy(gz, f); err != nil {
+		// Headers already sent — best we can do is log and let the client see a truncated response.
+		return
+	}
 }
 
 func (s *Server) checkAuth(r *http.Request) bool {

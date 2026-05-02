@@ -114,13 +114,15 @@ func (a *App) Execute(cmd string, args []string) error {
 		return a.CmdConfig(args)
 	case "push":
 		return a.CmdPush()
+	case "pull":
+		return a.CmdPull(args)
 	default:
 		return errors.New("unknown command")
 	}
 }
 
 func Usage() string {
-	return "Usage: memorydb {init|init-vector|init-metadata|init-token-metrics|search|vsearch|add-session|add-knowledge|add-fact|add-token-metrics|recent|context|embed|consolidate|entity-search|stats|token-stats|knowledge-graph|config|push}"
+	return "Usage: memorydb {init|init-vector|init-metadata|init-token-metrics|search|vsearch|add-session|add-knowledge|add-fact|add-token-metrics|recent|context|embed|consolidate|entity-search|stats|token-stats|knowledge-graph|config|push|pull}"
 }
 
 func arg(args []string, idx int) string {

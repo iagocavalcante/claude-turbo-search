@@ -264,7 +264,9 @@ Then point the CLI at it once:
     --token <your-token>
 ```
 
-After this, `/remember` will silently push to your dashboard whenever it runs. The full architecture, deferred work, and operating notes live in [`docs/plans/web-sync.md`](docs/plans/web-sync.md) and [`web/README.md`](web/README.md).
+After this, `/remember` will silently push to your dashboard whenever it runs.
+
+When you clone the same repo on a new machine, run `memory/memory-db.sh pull` once to download the accumulated memory — slug is derived from the git origin URL, so no per-repo config is needed. The full architecture, deferred work, and operating notes live in [`docs/plans/web-sync.md`](docs/plans/web-sync.md) and [`web/README.md`](web/README.md).
 
 ## Configuration
 

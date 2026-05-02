@@ -141,8 +141,16 @@ User then copies the URL + token into `memorydb config set`.
 ## Open questions (deferred)
 
 1. **Schema drift** — what happens if local schema is newer than the deployed web service expects? Versioned schema check on push, reject with a clear "upgrade your web app" error.
-2. **Volume backup** — Fly volumes aren't replicated. Acceptable for v1 since local is source of truth, but worth a `memorydb pull` command later for disaster recovery.
-3. **Auth for shared deployments** — out of scope for v1, but if someone wants team sharing later: per-user tokens scoped to repo slugs.
+2. **Auth for shared deployments** — out of scope for v1, but if someone wants team sharing later: per-user tokens scoped to repo slugs.
+
+## v1.2.0 — Pull (shipped)
+
+- `GET /api/repos/{slug}/db` returns the gzipped SQLite file behind Bearer auth (404 on unknown slug).
+- `memorydb pull` (and `memorydb pull --force`) downloads it, decodes, and writes atomically to `.claude-memory/memory.db`.
+- Use case: fresh clone of a repo on a new machine — point `memorydb config` at the dashboard once, run `memorydb pull`, get the full memory back for RAG/context.
+- Refuses to overwrite a non-empty local DB unless `--force` is passed (no merge logic; see scope cuts).
+- Slug is deterministic from `git remote get-url origin`, so the same repo on any machine ends up at the same path on the server.
+- 9 sync.Pull unit tests + 4 server-side endpoint tests + production round-trip (push → fresh clone → pull) verified byte-equal SHA-256.
 
 ## Risks / things to watch
 
