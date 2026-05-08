@@ -9,7 +9,11 @@
 set -e
 
 # Get the prompt from environment or stdin
-PROMPT="${CLAUDE_PROMPT:-$(cat)}"
+# UserPromptSubmit hooks receive a JSON envelope on stdin; extract .prompt.
+# Fall back to raw input if it isn't JSON (e.g. manual testing).
+RAW_INPUT="${CLAUDE_PROMPT:-$(cat)}"
+PROMPT=$(printf '%s' "$RAW_INPUT" | jq -r '.prompt // empty' 2>/dev/null)
+[ -z "$PROMPT" ] && PROMPT="$RAW_INPUT"
 
 # Skip if prompt is too short or looks like a command
 if [ ${#PROMPT} -lt 10 ]; then

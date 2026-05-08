@@ -43,7 +43,12 @@ find_repo_root() {
 REPO_ROOT="$(find_repo_root)"
 
 # Get the prompt
-PROMPT="${CLAUDE_PROMPT:-$(cat)}"
+# UserPromptSubmit hooks receive a JSON envelope on stdin (session_id,
+# transcript_path, prompt, ...); extract .prompt. Fall back to raw input if
+# it isn't JSON (e.g. manual testing or older harness versions).
+RAW_INPUT="${CLAUDE_PROMPT:-$(cat)}"
+PROMPT=$(printf '%s' "$RAW_INPUT" | jq -r '.prompt // empty' 2>/dev/null)
+[ -z "$PROMPT" ] && PROMPT="$RAW_INPUT"
 
 # Skip if prompt is too short
 if [ ${#PROMPT} -lt $MIN_QUERY_LENGTH ]; then
