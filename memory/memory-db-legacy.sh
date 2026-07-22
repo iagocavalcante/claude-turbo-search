@@ -28,7 +28,13 @@ find_repo_root() {
     echo "$PWD"  # Fallback to current directory
 }
 
-REPO_ROOT="$(find_repo_root)"
+# Honour an explicit target repo so this fallback and the Go backend always
+# agree on which per-repo database they are operating on.
+if [ -n "${MEMORY_REPO_ROOT:-}" ]; then
+    REPO_ROOT="$MEMORY_REPO_ROOT"
+else
+    REPO_ROOT="$(find_repo_root)"
+fi
 MEMORY_DIR="$REPO_ROOT/.claude-memory"
 DB_FILE="$MEMORY_DIR/memory.db"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

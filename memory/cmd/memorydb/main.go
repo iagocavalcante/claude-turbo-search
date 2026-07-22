@@ -45,7 +45,23 @@ func executableDir() (string, error) {
 	return filepath.Join(wd), nil
 }
 
+// findRepoRoot resolves the repository whose .claude-memory database this
+// invocation should read and write.
+//
+// MEMORY_REPO_ROOT takes precedence because callers frequently run from a
+// working directory that is not the target repo: memory-db.sh has to chdir
+// into the plugin's Go module for `go run` to resolve, which would otherwise
+// make this walk-up find the plugin's own checkout (writing every project's
+// memory into a single shared database) or no repo at all when the plugin is
+// installed outside a git repo.
 func findRepoRoot() (string, error) {
+	if root := os.Getenv("MEMORY_REPO_ROOT"); root != "" {
+		if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+			return "", fmt.Errorf("MEMORY_REPO_ROOT=%q is not a git repo root: %w", root, err)
+		}
+		return root, nil
+	}
+
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
@@ -56,7 +72,7 @@ func findRepoRoot() (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("failed to locate git repo root")
+			return "", fmt.Errorf("failed to locate git repo root (set MEMORY_REPO_ROOT to select the target repo explicitly)")
 		}
 		dir = parent
 	}
