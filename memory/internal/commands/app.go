@@ -253,10 +253,14 @@ func (a *App) CmdInit() error {
 	if err := a.ensureDir(); err != nil {
 		return err
 	}
-	if a.dbExists() {
-		fmt.Printf("Memory database already exists at %s\n", a.DBFile)
-		return nil
-	}
+	existed := a.dbExists()
+
+	// The schema is fully idempotent (CREATE ... IF NOT EXISTS throughout), so
+	// reapply it unconditionally rather than skipping when the file exists. A
+	// database whose creation aborted partway — as happens when the sqlite3 in
+	// use lacks FTS5, leaving the FTS table and every object declared after it
+	// missing — would otherwise stay broken forever, since the file exists and
+	// init would never touch it again.
 	schema, err := os.ReadFile(a.SchemaFile)
 	if err != nil {
 		return fmt.Errorf("failed to read schema: %w", err)
@@ -264,8 +268,53 @@ func (a *App) CmdInit() error {
 	if _, err := a.DB.RunSQL(string(schema)); err != nil {
 		return err
 	}
-	fmt.Printf("Memory database initialized at %s\n", a.DBFile)
+
+	repaired, err := a.backfillFTS()
+	if err != nil {
+		return err
+	}
+
+	switch {
+	case !existed:
+		fmt.Printf("Memory database initialized at %s\n", a.DBFile)
+	case repaired > 0:
+		fmt.Printf("Memory database repaired at %s (reindexed %d rows for full-text search)\n", a.DBFile, repaired)
+	default:
+		fmt.Printf("Memory database already up to date at %s\n", a.DBFile)
+	}
 	return nil
+}
+
+// backfillFTS repopulates memory_fts from the base tables for rows that predate
+// the FTS table. The sync triggers only fire on write, so rows inserted while
+// memory_fts was missing are invisible to search until reindexed here. Returns
+// the number of rows added.
+func (a *App) backfillFTS() (int, error) {
+	before, err := a.DB.ScalarInt("SELECT COUNT(*) FROM memory_fts;")
+	if err != nil {
+		return 0, err
+	}
+
+	const reindex = `
+INSERT INTO memory_fts(content, source_type, source_id)
+SELECT s.summary || ' ' || COALESCE(s.topics, ''), 'session', s.id FROM sessions s
+WHERE NOT EXISTS (SELECT 1 FROM memory_fts f WHERE f.source_type = 'session' AND f.source_id = s.id);
+INSERT INTO memory_fts(content, source_type, source_id)
+SELECT k.area || ' ' || k.summary || ' ' || COALESCE(k.patterns, ''), 'knowledge', k.id FROM knowledge k
+WHERE NOT EXISTS (SELECT 1 FROM memory_fts f WHERE f.source_type = 'knowledge' AND f.source_id = k.id);
+INSERT INTO memory_fts(content, source_type, source_id)
+SELECT fa.fact || ' ' || COALESCE(fa.category, ''), 'fact', fa.id FROM facts fa
+WHERE NOT EXISTS (SELECT 1 FROM memory_fts f WHERE f.source_type = 'fact' AND f.source_id = fa.id);
+`
+	if _, err := a.DB.RunSQL(reindex); err != nil {
+		return 0, err
+	}
+
+	after, err := a.DB.ScalarInt("SELECT COUNT(*) FROM memory_fts;")
+	if err != nil {
+		return 0, err
+	}
+	return after - before, nil
 }
 
 func (a *App) CmdInitMetadata() error {
