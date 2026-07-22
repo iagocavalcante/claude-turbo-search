@@ -42,6 +42,24 @@ find_repo_root() {
 
 REPO_ROOT="$(find_repo_root)"
 
+# Pin the memory backend to the same repo this hook resolved, so a failure to
+# agree on the repo root can't silently route memory to a different database.
+export MEMORY_REPO_ROOT="$REPO_ROOT"
+
+# Diagnostics go to a log, never to stdout (reserved for injected context) or
+# stderr (surfaced to the user as a hook error). Retrieval failures must stay
+# non-fatal, but they must not be invisible either. Only log into an existing
+# .claude-memory so the hook never creates directories in unrelated trees.
+if [ -d "$REPO_ROOT/.claude-memory" ]; then
+    HOOK_LOG="$REPO_ROOT/.claude-memory/rag-hook.log"
+    # Keep the log bounded; it is a rolling diagnostic, not an audit trail.
+    if [ -f "$HOOK_LOG" ] && [ "$(wc -c < "$HOOK_LOG" 2>/dev/null || echo 0)" -gt 262144 ]; then
+        tail -n 200 "$HOOK_LOG" > "$HOOK_LOG.tmp" 2>/dev/null && mv "$HOOK_LOG.tmp" "$HOOK_LOG"
+    fi
+else
+    HOOK_LOG="/dev/null"
+fi
+
 # Get the prompt
 # UserPromptSubmit hooks receive a JSON envelope on stdin (session_id,
 # transcript_path, prompt, ...); extract .prompt. Fall back to raw input if
@@ -248,10 +266,30 @@ wait_with_timeout() {
     MEMORY_CONTEXT=""
     ENTITY_RESULTS=""
 
+    # Run a memory subcommand, degrading to empty output on failure while
+    # recording why in the hook log.
+    # Testing the assignment as an `if` condition keeps `set -e` from aborting
+    # this subshell when the memory backend fails; retrieval is best-effort.
+    memory_call() {
+        local label="$1"
+        shift
+        local out status ts
+        if out=$("$MEMORY_SCRIPT" "$@" 2>>"$HOOK_LOG"); then
+            printf '%s' "$out"
+        else
+            # Capture $? before any other command (a substitution inline in the
+            # echo below would reset it to its own status first).
+            status=$?
+            ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            echo "[$ts] $label failed (exit $status): $MEMORY_SCRIPT $*" >> "$HOOK_LOG"
+        fi
+        return 0
+    }
+
     if [ -x "$MEMORY_SCRIPT" ]; then
         # Vector search (if enabled)
         if [ "$USE_VECTOR_SEARCH" = true ]; then
-            VECTOR_RESULTS=$("$MEMORY_SCRIPT" vsearch "$SEARCH_QUERY" 5 2>/dev/null || echo "")
+            VECTOR_RESULTS=$(memory_call vsearch vsearch "$SEARCH_QUERY" 5)
             # Filter out fallback messages
             if echo "$VECTOR_RESULTS" | grep -q "Falling back"; then
                 VECTOR_RESULTS=""
@@ -259,11 +297,11 @@ wait_with_timeout() {
         fi
 
         # Structured context (facts, knowledge, recent sessions)
-        MEMORY_CONTEXT=$("$MEMORY_SCRIPT" context "$SEARCH_QUERY" $MEMORY_TOKEN_BUDGET 2>/dev/null || echo "")
+        MEMORY_CONTEXT=$(memory_call context context "$SEARCH_QUERY" $MEMORY_TOKEN_BUDGET)
 
         # Entity search (if enabled)
         if [ "$PREFER_ENTITY_SEARCH" = true ]; then
-            ENTITY_RESULTS=$("$MEMORY_SCRIPT" entity-search "$SEARCH_QUERY" 2>/dev/null || echo "")
+            ENTITY_RESULTS=$(memory_call entity-search entity-search "$SEARCH_QUERY")
         fi
     fi
 
