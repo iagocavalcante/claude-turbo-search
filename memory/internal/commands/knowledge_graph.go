@@ -38,8 +38,8 @@ func colorFor(entityType string) string {
 	return ansiWhite
 }
 
-func bold(s string) string    { return ansiBold + s + ansiReset }
-func dim(s string) string     { return ansiDim + s + ansiReset }
+func bold(s string) string       { return ansiBold + s + ansiReset }
+func dim(s string) string        { return ansiDim + s + ansiReset }
 func colored(s, c string) string { return c + s + ansiReset }
 
 func rule(title string) {
@@ -83,9 +83,9 @@ func (a *App) CmdKnowledgeGraph(view, entity string) error {
 // ── Data fetching ────────────────────────────────────────────────────────
 
 type kgEntity struct {
-	entity    string
-	eType     string
-	refCount  int
+	entity   string
+	eType    string
+	refCount int
 }
 
 type kgRelation struct {
@@ -244,7 +244,7 @@ LIMIT 100;`
 		result = append(result, kgRelation{
 			fromType: parts[0], fromID: fromID,
 			toType: parts[2], toID: toID,
-			relation: parts[4],
+			relation:  parts[4],
 			fromLabel: fromLabel, toLabel: toLabel,
 		})
 	}

@@ -11,8 +11,8 @@ import (
 type Node struct {
 	ID       string `json:"id"`
 	Label    string `json:"label"`
-	Kind     string `json:"kind"`               // "entity" | "session" | "knowledge" | "fact"
-	Subtype  string `json:"subtype,omitempty"`  // "file"|"concept"|"package" when Kind=="entity"
+	Kind     string `json:"kind"`              // "entity" | "session" | "knowledge" | "fact"
+	Subtype  string `json:"subtype,omitempty"` // "file"|"concept"|"package" when Kind=="entity"
 	RefCount int    `json:"ref_count,omitempty"`
 }
 

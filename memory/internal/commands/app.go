@@ -20,12 +20,12 @@ import (
 )
 
 type App struct {
-	RepoRoot         string
-	MemoryDir        string
-	DBFile           string
-	ScriptDir        string
-	SchemaFile       string
-	MetadataSchema   string
+	RepoRoot           string
+	MemoryDir          string
+	DBFile             string
+	ScriptDir          string
+	SchemaFile         string
+	MetadataSchema     string
 	VectorSchema       string
 	TokenMetricsSchema string
 	EmbeddingsScript   string
@@ -42,16 +42,16 @@ type scoredResult struct {
 func New(repoRoot, scriptDir string) *App {
 	dbFile := filepath.Join(repoRoot, ".claude-memory", "memory.db")
 	return &App{
-		RepoRoot:         repoRoot,
-		MemoryDir:        filepath.Join(repoRoot, ".claude-memory"),
-		DBFile:           dbFile,
-		ScriptDir:        scriptDir,
+		RepoRoot:           repoRoot,
+		MemoryDir:          filepath.Join(repoRoot, ".claude-memory"),
+		DBFile:             dbFile,
+		ScriptDir:          scriptDir,
 		SchemaFile:         filepath.Join(scriptDir, "schema.sql"),
 		MetadataSchema:     filepath.Join(scriptDir, "schema-metadata.sql"),
 		VectorSchema:       filepath.Join(scriptDir, "schema-vector.sql"),
 		TokenMetricsSchema: filepath.Join(scriptDir, "schema-token-metrics.sql"),
-		EmbeddingsScript: filepath.Join(scriptDir, "embeddings.sh"),
-		DB:               db.New(dbFile),
+		EmbeddingsScript:   filepath.Join(scriptDir, "embeddings.sh"),
+		DB:                 db.New(dbFile),
 	}
 }
 
