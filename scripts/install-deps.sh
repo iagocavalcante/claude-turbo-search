@@ -131,6 +131,9 @@ check_command "fzf" "fzf" || MISSING+=("fzf")
 check_command "jq" "jq" || MISSING+=("jq")
 check_command "bun" "bun" || MISSING+=("bun")
 check_command "qmd" "qmd" || MISSING+=("qmd")
+check_command "python3" "python3" || MISSING+=("python3")
+check_command "go" "go" || MISSING+=("go")
+check_command "sqlite3" "sqlite3" || MISSING+=("sqlite3")
 
 echo ""
 
@@ -182,6 +185,15 @@ for dep in "${MISSING[@]}"; do
       # brew: jq, apt: jq, dnf: jq, pacman: jq
       install_package "jq" "jq" "jq" "jq"
       ;;
+    python3)
+      install_package "python" "python3" "python3" "python"
+      ;;
+    go)
+      install_package "go" "golang-go" "golang" "go"
+      ;;
+    sqlite3)
+      install_package "sqlite" "sqlite3" "sqlite" "sqlite"
+      ;;
     bun)
       install_bun
       ;;
@@ -196,7 +208,7 @@ for dep in "${MISSING[@]}"; do
         exit 1
       fi
       echo "  Installing qmd globally with bun..."
-      bun install -g https://github.com/tobi/qmd
+      bun install -g @tobilu/qmd@2.8.3
       echo -e "${YELLOW}  Note: QMD will download ~1.7GB of models on first use${NC}"
       ;;
   esac

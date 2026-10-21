@@ -1,7 +1,7 @@
 {
-  "name": "claude-turbo-search",
-  "version": "1.5.0",
-  "description": "Optimized file search, semantic indexing, and persistent memory for Claude Code — with optional sync to a self-hosted web dashboard",
+  "name": "turbo-search",
+  "version": "1.6.0",
+  "description": "Project-scoped document search and persistent memory for Claude Code and Codex",
   "author": "Iago Cavalcante",
   "license": "MIT",
   "keywords": [

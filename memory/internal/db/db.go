@@ -86,7 +86,7 @@ func (c *Client) RunSQL(sql string, extraArgs ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	args := []string{c.Path}
+	args := []string{"-cmd", ".timeout 5000", c.Path}
 	args = append(args, extraArgs...)
 	cmd := exec.Command(bin, args...)
 	cmd.Stdin = strings.NewReader(sql)
@@ -102,7 +102,7 @@ func (c *Client) Run(extraArgs ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	args := []string{c.Path}
+	args := []string{"-cmd", ".timeout 5000", c.Path}
 	args = append(args, extraArgs...)
 	cmd := exec.Command(bin, args...)
 	out, err := cmd.CombinedOutput()

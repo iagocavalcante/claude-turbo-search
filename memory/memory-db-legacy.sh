@@ -17,24 +17,18 @@ set -e
 
 # Find repo root and memory database
 find_repo_root() {
-    local dir="$PWD"
-    while [ "$dir" != "/" ]; do
-        if [ -d "$dir/.git" ]; then
-            echo "$dir"
-            return 0
-        fi
-        dir="$(dirname "$dir")"
-    done
-    echo "$PWD"  # Fallback to current directory
+    local root
+    root=$(git -C "${MEMORY_REPO_ROOT:-$PWD}" rev-parse --show-toplevel 2>/dev/null) || return 1
+    if [ -n "${MEMORY_REPO_ROOT:-}" ] && [ "$(cd "$MEMORY_REPO_ROOT" && pwd -P)" != "$root" ]; then
+        echo "MEMORY_REPO_ROOT must point to a repository root" >&2
+        return 1
+    fi
+    printf '%s\n' "$root"
 }
 
 # Honour an explicit target repo so this fallback and the Go backend always
 # agree on which per-repo database they are operating on.
-if [ -n "${MEMORY_REPO_ROOT:-}" ]; then
-    REPO_ROOT="$MEMORY_REPO_ROOT"
-else
-    REPO_ROOT="$(find_repo_root)"
-fi
+REPO_ROOT="$(find_repo_root)" || { echo "Not inside a Git repository" >&2; exit 1; }
 MEMORY_DIR="$REPO_ROOT/.claude-memory"
 DB_FILE="$MEMORY_DIR/memory.db"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -33,11 +33,7 @@ Before submitting changes, ensure all tests pass:
 ./tests/run_tests.sh
 ```
 
-To run specific tests:
-
-```bash
-./tests/run_tests.sh test_name
-```
+Run the focused Python regression suite with `python3 -m unittest discover -s tests -p 'test_*.py' -v` after building the memory executable. `python3 tests/smoke_clients.py` is an opt-in check using installed Claude Code, Codex and QMD in temporary profiles; it does not call an LLM. See [compatibility](docs/compatibility.md).
 
 ## Code Style
 
@@ -81,7 +77,7 @@ To test your changes locally:
 
 2. Test the CLI manually with sample inputs:
    ```bash
-   ./claude-turbo-search "your search query"
+   python3 scripts/turbo.py search "your search query"
    ```
 
 3. Run ShellCheck on modified scripts:
@@ -91,7 +87,7 @@ To test your changes locally:
 
 ### Creating Tests
 
-If adding new features, please include tests. Tests should be placed in the `tests/` directory and follow the naming convention `test_*.sh`.
+If adding new features, please include tests. Tests should be placed in the `tests/` directory and follow the naming convention `test_*.py`.
 
 ## Reporting Bugs
 

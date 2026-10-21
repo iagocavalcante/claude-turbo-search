@@ -3,6 +3,13 @@ name: knowledge-graph
 description: Interactive TUI knowledge graph viewer for the persistent memory database.
 ---
 
+## Installed paths
+
+Resolve `PLUGIN_DIR` to the absolute directory two levels above this `SKILL.md` file.
+Use the skill's actual installed location, including plugin caches or symlinks; do not infer it from the project's working directory or a home-directory checkout.
+Set `PLUGIN_DIR` explicitly in each shell invocation below, keeping the working directory in the user's target repository.
+
+
 # /knowledge-graph - Knowledge Graph Viewer
 
 Interactive TUI that visualizes the entity relationships, timelines, and statistics from the persistent memory database.
@@ -14,8 +21,7 @@ When the user invokes `/knowledge-graph`, run the Go CLI viewer.
 ### 1. Resolve Paths
 
 ```bash
-PLUGIN_DIR="${PLUGIN_DIR:-$(find ~/.claude/plugins -name "claude-turbo-search" -type d 2>/dev/null | head -1)}"
-[ -z "$PLUGIN_DIR" ] && PLUGIN_DIR="$HOME/claude-turbo-search"
+: "${PLUGIN_DIR:?Set PLUGIN_DIR from this skill file location}"
 ```
 
 ### 2. Run the Viewer

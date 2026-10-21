@@ -1,0 +1,54 @@
+name: Reliability
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live-smoke:
+        description: Test pinned real Claude, Codex and QMD clients in temporary profiles
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  regression:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: web/go.mod
+          cache-dependency-path: web/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CLI dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ripgrep jq sqlite3
+      - name: Install CLI dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ripgrep jq sqlite
+      - name: Test
+        run: bash tests/run_tests.sh
+
+  client-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.live-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned clients and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep jq sqlite3
+          npm install -g @anthropic-ai/claude-code@2.1.306 @openai/codex@0.163.0 @tobilu/qmd@2.8.3
+      - name: Isolated client and MCP smoke test
+        run: python3 tests/smoke_clients.py

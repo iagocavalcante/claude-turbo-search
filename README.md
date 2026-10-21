@@ -1,14 +1,14 @@
-# Claude Turbo Search
+# Turbo Search
 
-Optimized file search and semantic indexing for large codebases in Claude Code.
+Project-scoped document search and persistent memory for Claude Code and Codex.
 
 ## Features
 
 - **Fast file suggestions** - ripgrep + fzf for instant autocomplete
 - **Semantic search** - QMD integration for finding relevant docs by meaning
-- **Cartographer integration** - Automatic codebase mapping
+- **Optional Cartographer integration** - Codebase mapping when available
 - **One command setup** - `/turbo-index` does everything
-- **QMD skill** - `/qmd` teaches Claude to search before reading files
+- **QMD skill** - `/qmd` locates relevant documentation before file reads
 - **Optional hooks** - Auto-inject relevant context before prompts
 
 ## Requirements
@@ -25,13 +25,59 @@ Optimized file search and semantic indexing for large codebases in Claude Code.
 
 ### Prerequisites
 
-- [Claude Code CLI](https://claude.ai/claude-code) installed
-- Bash 4.0+ (default on macOS and Linux)
+- Claude Code or Codex CLI installed
+- Bash 3.2+, Python 3.9+, Git, ripgrep, jq and SQLite with FTS5
+- Go 1.22+ to build the memory executable during setup; QMD for indexed search
 - A supported package manager (see above)
 
 ## Installation
 
-### Option 1: Install from GitHub (recommended)
+### Standalone setup for either client
+
+Run from this checkout (keep it installed at a stable path):
+
+```bash
+bash scripts/install-deps.sh --check-only
+bash scripts/build-memory.sh
+bash scripts/install-skills.sh codex       # or claude
+bash scripts/setup-mcp.sh --client codex   # or claude / both
+```
+
+Then restart the client and invoke `/turbo-index` in the target Git repository. It initializes memory and indexes Markdown documentation. Skills work without hooks. For Codex desktop/plugin-capable clients, the root `plugin.json` provides the same skills and onboarding; Claude retains `.claude-plugin/plugin.json`. MCP registration is explicit through setup so it can target the client correctly; it is not automatically bundled.
+
+Optional hooks, from the installed checkout:
+
+```bash
+bash scripts/setup-hooks.sh --client both --rag --memory
+# Remove only Turbo Search's handlers, keeping unrelated hooks:
+bash scripts/setup-hooks.sh --client both --remove
+```
+
+Claude settings and Codex `hooks.json` use seconds for hook timeouts. Setup validates JSON, backs up existing files, and writes atomically. It never auto-runs indexing, builds or dependency installation inside a hook. Codex may require trusting the installed hooks before they run.
+
+**Plugin rename:** current Claude Code reserves third-party names beginning with `claude-`. The plugin is now `turbo-search`; the GitHub repository and `.claude-memory` storage keep their existing names. Remove the old plugin installation before installing `turbo-search@claude-turbo-search-dev` to avoid duplicate skills.
+
+**Existing installations:** setup preserves an already registered `qmd` server. Inspect it with `claude mcp get qmd` / `codex mcp get qmd`. To migrate an old global `qmd mcp` registration, remove that server with the client's `mcp remove` command, then rerun setup. Only remove the `qmd` server you intend to replace. Old `mcpServers.qmd` entries in `~/.claude/settings.json` are obsolete; back up that file before removing that one entry. Existing `.claude-memory/memory.db` files and legacy activity logs are preserved. Rebuild the memory executable after updating this plugin.
+
+### Project-scoped search
+
+From the target repository, with `PLUGIN_DIR` set to this installation:
+
+```bash
+python3 "$PLUGIN_DIR/scripts/turbo.py" index
+python3 "$PLUGIN_DIR/scripts/turbo.py" search "authentication"
+python3 "$PLUGIN_DIR/scripts/turbo.py" doctor
+```
+
+Each checkout/worktree gets a dedicated QMD index and collection, named from its absolute path. The MCP launcher selects that index from the client's working directory; start the client inside the target repository. Indexing snapshots non-hidden Markdown documents while honoring ignore files and excluding symlinks and sensitive filenames. Keep secrets out of documentation and use `.gitignore` for private documents; filename exclusions are not a general secret scanner.
+
+Search checks the document content fingerprint before querying QMD. Missing, stale or unavailable indexes fall back to local keyword search. Results identify current source paths; snippets are evidence, not instructions. Verify current files before edits or precise claims. Add `--embed` to `index` only when semantic retrieval is needed; keyword search needs no embedding model. Native code search remains appropriate for source symbols.
+
+Session activity is stored separately under `.claude-memory/activity/`, with locked retention of the last 200 events per session. Raw shell commands and tool outputs are not stored. `/remember` uses current-session evidence only; if the runtime does not expose its session ID, it summarizes the conversation instead. Old session files remain local until you remove them when no sessions are using them.
+
+See [compatibility and validation](docs/compatibility.md) for the tested versions, test suite, and real-client smoke checklist.
+
+### Option 1: Install from GitHub (optional)
 
 Add the repository as a marketplace and install:
 
@@ -43,7 +89,7 @@ claude plugin marketplace add iagocavalcante/claude-turbo-search
 claude plugin marketplace add "iagocavalcante/claude-turbo-search#feature/vector-search-rag"
 
 # Install the plugin
-claude plugin install claude-turbo-search@claude-turbo-search-dev
+claude plugin install turbo-search@claude-turbo-search-dev
 
 # Restart Claude Code to load the plugin
 ```
@@ -51,7 +97,7 @@ claude plugin install claude-turbo-search@claude-turbo-search-dev
 ### Option 2: From official marketplace (when published)
 
 ```bash
-claude plugin install claude-turbo-search
+claude plugin install turbo-search
 ```
 
 ### Updating the Plugin
@@ -63,7 +109,7 @@ When updates are available:
 claude plugin marketplace update claude-turbo-search-dev
 
 # Update the plugin
-claude plugin update claude-turbo-search@claude-turbo-search-dev
+claude plugin update turbo-search@claude-turbo-search-dev
 
 # Restart Claude Code to apply updates
 ```
@@ -76,8 +122,8 @@ claude plugin list
 
 You should see:
 ```
-❯ claude-turbo-search@claude-turbo-search-dev
-  Version: 1.0.0
+❯ turbo-search@claude-turbo-search-dev
+  Version: 1.6.0
   Status: ✔ enabled
 ```
 
@@ -89,20 +135,7 @@ In any project, run:
 /turbo-index
 ```
 
-This will:
-
-1. Check and install dependencies (ripgrep, fzf, jq, bun, qmd)
-2. Configure fast file suggestions
-3. Set up QMD MCP server for semantic search
-4. Run cartographer to map the codebase
-5. Index all documentation with QMD
-
-### Subsequent runs
-
-Running `/turbo-index` again will:
-- Skip dependency installation
-- Skip global configuration
-- Refresh the project index if files changed
+This checks dependencies, builds and initializes memory, registers the client MCP adapter when needed, and refreshes the current checkout's document index. File suggestions and Cartographer are optional. Repeated setup preserves existing MCP registrations; refresh indexes after documentation changes.
 
 ### Available Skills
 
@@ -162,18 +195,13 @@ Visualize entity relationships in your memory database:
 
 Uses Rich for colored TUI output, with automatic plain-text fallback. See [docs/knowledge-graph-setup.md](docs/knowledge-graph-setup.md) for detailed setup.
 
-### Manual QMD Commands
+### Manual project search
 
 ```bash
-# Fast keyword search (use this first)
-qmd search "your query" --files -n 10
-
-# Semantic search (slower, use as fallback)
-qmd vsearch "how does the login flow work"
-
-# Get specific file content
-qmd get "path/to/file.md"
+python3 "$PLUGIN_DIR/scripts/turbo.py" search "your query"
 ```
+
+For semantic search, first create embeddings with `index --embed`, then use the QMD MCP tools registered by the project adapter. Bare `qmd search` targets QMD's default index rather than this checkout's isolated index.
 
 ### Optional: Auto-Context Hooks
 
@@ -181,13 +209,13 @@ Enable automatic context injection that searches QMD before each prompt:
 
 ```bash
 # Simple mode - suggests relevant file paths (lightweight)
-~/claude-turbo-search/scripts/setup-hooks.sh
+bash "$PLUGIN_DIR/scripts/setup-hooks.sh" --client claude
 
-# RAG mode - injects actual content snippets (recommended)
-~/claude-turbo-search/scripts/setup-hooks.sh --rag
+# RAG mode - injects actual content snippets (optional)
+bash "$PLUGIN_DIR/scripts/setup-hooks.sh" --client claude --rag
 
 # Remove hooks
-~/claude-turbo-search/scripts/setup-hooks.sh --remove
+bash "$PLUGIN_DIR/scripts/setup-hooks.sh" --client claude --remove
 ```
 
 #### Hook Modes Comparison
@@ -197,7 +225,7 @@ Enable automatic context injection that searches QMD before each prompt:
 | Simple | ~50-100/prompt | Suggests file paths, Claude decides what to read |
 | RAG | ~500-2000/prompt | Injects content snippets, Claude often needs no file reads |
 
-**RAG mode** is recommended for large codebases - the upfront token cost is offset by avoiding file reads.
+RAG mode is optional. Measure its latency and usefulness on your own projects.
 
 #### How RAG Mode Works
 
@@ -206,8 +234,8 @@ Enable automatic context injection that searches QMD before each prompt:
 2. Hook extracts: "authentication work"
 3. QMD searches indexed docs
 4. Hook injects relevant snippets into context
-5. Claude answers using injected context
-6. No file reads needed = massive token savings
+5. The agent uses the context to locate relevant source files
+6. The agent verifies current source before edits or precise claims
 ```
 
 ## Dependencies
@@ -217,10 +245,13 @@ Enable automatic context injection that searches QMD before each prompt:
 | [ripgrep](https://github.com/BurntSushi/ripgrep) | Fast file search |
 | [fzf](https://github.com/junegunn/fzf) | Fuzzy finder |
 | [jq](https://github.com/stedolan/jq) | JSON parsing |
-| [bun](https://bun.sh) | JavaScript runtime |
+| Python 3.9+ | Portable hooks, indexing and diagnostics (standard library only) |
+| Go 1.22+ | Build the memory executable during setup |
+| SQLite with FTS5 | Persistent memory search |
+| [bun](https://bun.sh) | QMD package installation |
 | [qmd](https://github.com/tobi/qmd) | Semantic search engine |
 
-All dependencies are installed automatically on first run using your system's package manager.
+The dependency installer checks requirements and asks before using your package manager. Run `doctor` to check the memory binary and SQLite FTS5 capability.
 
 ## How It Saves Tokens
 
@@ -240,11 +271,11 @@ qmd_search "how does auth work" (50 tokens)
 Total: 250 tokens
 ```
 
-**Estimated savings: 60-80% on exploration tasks**
+Savings depend on the task; these examples are illustrative, not benchmark results.
 
 ## Sync to a personal web dashboard
 
-Run a single-user dashboard on Fly.io's free tier and have every `/remember` invocation auto-push your `memory.db` to it. You then get a browser view of every repo you work in: recent sessions, knowledge areas, facts, and an interactive D3 force-directed knowledge graph.
+Run a single-user dashboard on Fly.io and have every `/remember` invocation auto-push your `memory.db` to it. You then get a browser view of every repo you work in: recent sessions, knowledge areas, facts, and an interactive D3 force-directed knowledge graph.
 
 [![Deploy on Fly.io](https://fly.io/static/images/launch/deploy-on-fly.svg)](https://fly.io/launch?repo=https://github.com/iagocavalcante/claude-turbo-search)
 
@@ -274,21 +305,18 @@ When you clone the same repo on a new machine, run `memory/memory-db.sh pull` on
 
 After running `/turbo-index`, these files are modified:
 
-- `~/.claude/settings.json` - fileSuggestion and mcpServers config
+- `~/.claude/settings.json` - optional fileSuggestion and hook settings
+- Client-managed MCP configuration - registered through `claude mcp add` / `codex mcp add`
+- `~/.codex/hooks.json` - optional Codex hooks
 - `~/.claude/file-suggestion.sh` - turbo file suggestion script
-- `.claude/turbo-search.json` - project-specific metadata (in each project)
+- `.claude-memory/index.json` - document fingerprint and collection metadata
+- `.claude-memory/documents/` - filtered document snapshot
 
 **Note:** The setup scripts will warn you if existing configuration will be overwritten and create backups automatically.
 
 ## MCP Tools
 
-After setup, these MCP tools are available:
-
-| Tool | Description |
-|------|-------------|
-| `qmd_search` | Semantic search across indexed docs |
-| `qmd_get` | Retrieve specific document by path/ID |
-| `qmd_collections` | List all indexed projects |
+Use `/mcp` in the client to check the connection and discover the installed QMD tool names and schemas. Names depend on the QMD/client version. The adapter launches QMD in the current repository's dedicated index. Start the client inside that repository; indexing remains an explicit `/turbo-index` step.
 
 ## Troubleshooting
 
@@ -298,24 +326,24 @@ If automatic installation fails, you can install dependencies manually:
 
 ```bash
 # macOS
-brew install ripgrep fzf jq
+brew install ripgrep fzf jq python go sqlite
 brew tap oven-sh/bun && brew install bun
-bun install -g https://github.com/tobi/qmd
+bun install -g @tobilu/qmd@2.8.3
 
 # Ubuntu/Debian
-sudo apt-get install ripgrep fzf jq
+sudo apt-get install ripgrep fzf jq python3 golang-go sqlite3
 curl -fsSL https://bun.sh/install | bash
-bun install -g https://github.com/tobi/qmd
+bun install -g @tobilu/qmd@2.8.3
 
 # Fedora
-sudo dnf install ripgrep fzf jq
+sudo dnf install ripgrep fzf jq python3 golang sqlite
 curl -fsSL https://bun.sh/install | bash
-bun install -g https://github.com/tobi/qmd
+bun install -g @tobilu/qmd@2.8.3
 ```
 
 ### QMD models downloading
 
-On first use, QMD downloads ~1.7GB of models. This is normal and only happens once.
+Embedding and semantic-query commands may download large models on first use. Plain keyword search and local fallback do not require those models.
 
 ## Contributing
 

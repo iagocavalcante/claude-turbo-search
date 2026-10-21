@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"claude-turbo-search/memorydb/internal/commands"
 )
@@ -45,37 +47,31 @@ func executableDir() (string, error) {
 	return filepath.Join(wd), nil
 }
 
-// findRepoRoot resolves the repository whose .claude-memory database this
-// invocation should read and write.
-//
-// MEMORY_REPO_ROOT takes precedence because callers frequently run from a
-// working directory that is not the target repo: memory-db.sh has to chdir
-// into the plugin's Go module for `go run` to resolve, which would otherwise
-// make this walk-up find the plugin's own checkout (writing every project's
-// memory into a single shared database) or no repo at all when the plugin is
-// installed outside a git repo.
+// findRepoRoot handles normal checkouts, submodules and linked worktrees.
 func findRepoRoot() (string, error) {
-	if root := os.Getenv("MEMORY_REPO_ROOT"); root != "" {
-		if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
-			return "", fmt.Errorf("MEMORY_REPO_ROOT=%q is not a git repo root: %w", root, err)
-		}
-		return root, nil
+	target := os.Getenv("MEMORY_REPO_ROOT")
+	if target == "" {
+		target = "."
 	}
-
-	dir, err := os.Getwd()
+	out, err := exec.Command("git", "-C", target, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("not inside a git repository: %s", target)
 	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return dir, nil
+	root := strings.TrimSpace(string(out))
+	if os.Getenv("MEMORY_REPO_ROOT") != "" {
+		absolute, err := filepath.Abs(target)
+		if err != nil {
+			return "", err
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("failed to locate git repo root (set MEMORY_REPO_ROOT to select the target repo explicitly)")
+		absolute, err = filepath.EvalSymlinks(absolute)
+		if err != nil {
+			return "", err
 		}
-		dir = parent
+		if absolute != root {
+			return "", fmt.Errorf("MEMORY_REPO_ROOT must point to a repository root")
+		}
 	}
+	return root, nil
 }
 
 func fatal(err error) {

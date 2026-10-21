@@ -1,7 +1,14 @@
 ---
 name: token-stats
-description: Show token economics comparing usage with turbo-search vs without. Demonstrates actual savings from search-first approach.
+description: Show token economics comparing usage with turbo-search vs without. Reports stored metrics and clearly labeled estimates.
 ---
+
+## Installed paths
+
+Resolve `PLUGIN_DIR` to the absolute directory two levels above this `SKILL.md` file.
+Use the skill's actual installed location, including plugin caches or symlinks; do not infer it from the project's working directory or a home-directory checkout.
+Set `PLUGIN_DIR` explicitly in each shell invocation below, keeping the working directory in the user's target repository.
+
 
 # /token-stats - Token Economics Dashboard
 
@@ -11,25 +18,15 @@ Show the token savings achieved by using search-first exploration vs blind file 
 
 When the user invokes `/token-stats`, analyze token usage and display savings.
 
-### 1. Gather Activity Data
+### 1. Gather activity data
+
+If the runtime exposes the current session ID, read only that session:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-ACTIVITY_FILE="$REPO_ROOT/.claude-memory/activity.log"
-
-# Count files read this session
-if [ -f "$ACTIVITY_FILE" ]; then
-    echo "=== Session Activity ==="
-    FILES_READ=$(grep -c "READ:" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
-    FILES_EDITED=$(grep -c "EDIT:" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
-    SEARCHES=$(grep -c "SEARCH:" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
-    echo "Files read: $FILES_READ"
-    echo "Files edited: $FILES_EDITED"
-    echo "Searches performed: $SEARCHES"
-else
-    echo "No activity log found for this session"
-fi
+python3 "$PLUGIN_DIR/scripts/turbo.py" activity-read --session "$SESSION_ID"
 ```
+
+Count JSON `tool` fields (`Read`, `Edit`, `Write`, `apply_patch`) only when present. Shell command contents are intentionally not logged; do not infer file reads from `Bash` events. If the session ID is unavailable, report session metrics as unavailable. Do not read other sessions or the legacy shared activity.log.
 
 ### 2. Calculate Codebase Stats
 
@@ -76,8 +73,7 @@ echo "Estimated tokens: $ESTIMATED_TOTAL_TOKENS"
 ### 3. Query Memory for Historical Data
 
 ```bash
-PLUGIN_DIR=$(find ~/.claude/plugins -name "claude-turbo-search" -type d 2>/dev/null | head -1)
-[ -z "$PLUGIN_DIR" ] && PLUGIN_DIR="$HOME/claude-turbo-search"
+: "${PLUGIN_DIR:?Set PLUGIN_DIR from this skill file location}"
 MEMORY_SCRIPT="$PLUGIN_DIR/memory/memory-db.sh"
 
 if [ -f "$MEMORY_SCRIPT" ]; then
@@ -173,7 +169,7 @@ End with actionable suggestions:
 
 ```
 💡 Pro Tips to Maximize Savings:
-   • Use 'qmd search' before reading any file
+   • Use project-scoped search before reading large files
    • Run /remember at session end to build context
    • Check /memory-stats for accumulated knowledge
    • The more you use it, the smarter it gets!

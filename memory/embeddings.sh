@@ -13,18 +13,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Find repo root for config
 find_repo_root() {
-    local dir="$PWD"
-    while [ "$dir" != "/" ]; do
-        if [ -d "$dir/.git" ]; then
-            echo "$dir"
-            return 0
-        fi
-        dir="$(dirname "$dir")"
-    done
-    echo "$PWD"
+    local root
+    root=$(git -C "${MEMORY_REPO_ROOT:-$PWD}" rev-parse --show-toplevel 2>/dev/null) || return 1
+    if [ -n "${MEMORY_REPO_ROOT:-}" ] && [ "$(cd "$MEMORY_REPO_ROOT" && pwd -P)" != "$root" ]; then
+        echo "MEMORY_REPO_ROOT must point to a repository root" >&2
+        return 1
+    fi
+    printf '%s\n' "$root"
 }
 
-REPO_ROOT="$(find_repo_root)"
+REPO_ROOT="$(find_repo_root)" || { echo "Not inside a Git repository" >&2; exit 1; }
 MEMORY_DIR="$REPO_ROOT/.claude-memory"
 CONFIG_FILE="$MEMORY_DIR/embedding-config.json"
 DB_FILE="$MEMORY_DIR/memory.db"

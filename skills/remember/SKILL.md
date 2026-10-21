@@ -3,6 +3,13 @@ name: remember
 description: Save the current work session to persistent memory for future context. Summarizes accomplishments, tracks files modified, and stores learnings for cross-session continuity.
 ---
 
+## Installed paths
+
+Resolve `PLUGIN_DIR` to the absolute directory two levels above this `SKILL.md` file.
+Use the skill's actual installed location, including plugin caches or symlinks; do not infer it from the project's working directory or a home-directory checkout.
+Set `PLUGIN_DIR` explicitly in each shell invocation below, keeping the working directory in the user's target repository.
+
+
 # /remember - Save Session to Memory
 
 Summarize the current work session and save it to persistent memory for future context.
@@ -11,17 +18,15 @@ Summarize the current work session and save it to persistent memory for future c
 
 When the user invokes `/remember`, you should:
 
-### 1. Check for Activity Log
+### 1. Check session activity
 
-First, check if there's an activity log from this session:
+If the current runtime exposes its session ID, use it explicitly:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-ACTIVITY_FILE="$REPO_ROOT/.claude-memory/activity.log"
-if [ -f "$ACTIVITY_FILE" ]; then
-    cat "$ACTIVITY_FILE"
-fi
+python3 "$PLUGIN_DIR/scripts/turbo.py" activity-read --session "$SESSION_ID"
 ```
+
+If the ID is unavailable, summarize the current conversation. Do not guess an ID, read another session's activity, or combine logs. Legacy `.claude-memory/activity.log` remains untouched and must not be treated as current-session evidence.
 
 ### 2. Analyze the Session
 
@@ -62,18 +67,20 @@ Identify:
 Use the memory-db.sh script to save:
 
 ```bash
-PLUGIN_DIR="${PLUGIN_DIR:-$HOME/claude-turbo-search}"
+: "${PLUGIN_DIR:?Set PLUGIN_DIR from this skill file location}"
 MEMORY_SCRIPT="$PLUGIN_DIR/memory/memory-db.sh"
 
 # Initialize if needed
 "$MEMORY_SCRIPT" init
 
 # Save session
-"$MEMORY_SCRIPT" add-session \
+SAVED_SESSION=$("$MEMORY_SCRIPT" add-session \
     "YOUR_SUMMARY_HERE" \
     '["file1.ts", "file2.ts"]' \
     '["Read", "Edit", "Bash"]' \
-    "topic1, topic2, topic3"
+    "topic1, topic2, topic3")
+printf '%s\n' "$SAVED_SESSION"
+MEMORY_SESSION_ID=$(printf '%s\n' "$SAVED_SESSION" | sed -n 's/^Session ID: //p')
 ```
 
 ### 6. Optionally Add Knowledge or Facts
@@ -94,30 +101,19 @@ If during the session you learned something important about the codebase that sh
 "$MEMORY_SCRIPT" add-fact "All API routes require authentication except /health" "convention"
 ```
 
-### 6.5. Save Token Metrics
+### 6.5. Token estimates
 
-Before clearing the activity log, calculate and persist token metrics for this session:
+If the current runtime session ID is known and the save returned a numeric `MEMORY_SESSION_ID`, persist estimates from the observed events. Never find the saved ID with `recent 1` or `MAX(id)`; another session may have written concurrently.
 
 ```bash
-PLUGIN_DIR="${PLUGIN_DIR:-$HOME/claude-turbo-search}"
-MEMORY_SCRIPT="$PLUGIN_DIR/memory/memory-db.sh"
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
-ACTIVITY_FILE="$REPO_ROOT/.claude-memory/activity.log"
-
-if [ -f "$MEMORY_SCRIPT" ] && [ -f "$ACTIVITY_FILE" ]; then
-    # Get the session ID just saved (most recent)
-    SESSION_ID=$("$MEMORY_SCRIPT" recent 1 2>/dev/null | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
-
-    if [ -n "$SESSION_ID" ]; then
-        SEARCHES=$(grep -c "SEARCH:" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
-        READS=$(grep -c "|Read|" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
-        EDITS=$(grep -c "|Edit|" "$ACTIVITY_FILE" 2>/dev/null || echo "0")
-        "$MEMORY_SCRIPT" add-token-metrics "$SESSION_ID" "$SEARCHES" "$READS" "$EDITS" 2>/dev/null || true
-    fi
-fi
+ACTIVITY=$(python3 "$PLUGIN_DIR/scripts/turbo.py" activity-read --session "$SESSION_ID")
+READS=$(printf '%s' "$ACTIVITY" | jq '[.[] | select(.tool == "Read")] | length')
+EDITS=$(printf '%s' "$ACTIVITY" | jq '[.[] | select(.tool == "Edit" or .tool == "Write" or .tool == "apply_patch")] | length')
+SEARCHES=$(printf '%s' "$ACTIVITY" | jq '[.[] | select(.tool | test("mcp__.*qmd.*__(search|vsearch|query)$"))] | length')
+"$MEMORY_SCRIPT" add-token-metrics "$MEMORY_SESSION_ID" "$SEARCHES" "$READS" "$EDITS"
 ```
 
-This step is non-blocking — if memory-db.sh is unavailable or fails, the session save still succeeds.
+Skip this step when either ID is unavailable or there are no observed events. These are estimates from a bounded activity window, not measured token usage. Report metric-save failures without undoing the saved memory. Historical metrics remain available via `/token-stats`.
 
 ### 6.6. Push to Remote Dashboard (Optional)
 
@@ -131,14 +127,9 @@ This step is non-blocking — failures are silent. When no remote is configured,
 
 See [`docs/plans/web-sync.md`](../../docs/plans/web-sync.md) for the dashboard architecture and `web/README.md` for deploy instructions.
 
-### 7. Clear Activity Log
+### 7. Retain session activity
 
-After saving, clear the activity log:
-
-```bash
-ACTIVITY_FILE="$REPO_ROOT/.claude-memory/activity.log"
-[ -f "$ACTIVITY_FILE" ] && rm "$ACTIVITY_FILE"
-```
+Do not delete shared or active logs. Each session log is bounded to its last 200 events under `.claude-memory/activity/`. Retention avoids racing concurrent hook writes.
 
 ### 8. Confirm to User
 

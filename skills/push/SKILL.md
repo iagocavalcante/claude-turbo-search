@@ -3,6 +3,13 @@ name: push
 description: Manually upload the persistent memory database to your self-hosted dashboard. Useful after directly running add-fact or add-knowledge — for normal session work, /remember already auto-pushes.
 ---
 
+## Installed paths
+
+Resolve `PLUGIN_DIR` to the absolute directory two levels above this `SKILL.md` file.
+Use the skill's actual installed location, including plugin caches or symlinks; do not infer it from the project's working directory or a home-directory checkout.
+Set `PLUGIN_DIR` explicitly in each shell invocation below, keeping the working directory in the user's target repository.
+
+
 # /push - Upload Memory To Dashboard
 
 Send the current repo's `.claude-memory/memory.db` to your self-hosted Fly.io dashboard. Slug is derived from `git remote get-url origin`, so it lands on the right per-repo storage automatically.
@@ -12,7 +19,7 @@ Send the current repo's `.claude-memory/memory.db` to your self-hosted Fly.io da
 When the user invokes `/push`, run:
 
 ```bash
-PLUGIN_DIR="${PLUGIN_DIR:-$HOME/claude-turbo-search}"
+: "${PLUGIN_DIR:?Set PLUGIN_DIR from this skill file location}"
 MEMORY_SCRIPT="$PLUGIN_DIR/memory/memory-db.sh"
 
 "$MEMORY_SCRIPT" push
