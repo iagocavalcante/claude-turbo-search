@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: web/go.sum
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.15'
       - name: Install CLI dependencies (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ripgrep jq sqlite3
@@ -44,7 +44,7 @@ jobs:
           node-version: '22'
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.15'
       - name: Install pinned clients and dependencies
         run: |
           sudo apt-get update
