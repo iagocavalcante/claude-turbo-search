@@ -2,17 +2,21 @@
 
 Turbo Search uses one local memory CLI and shared skills. Claude Code and Codex registration are adapters; the memory database remains `.claude-memory/memory.db`. No database migration or cloud service is required.
 
-## Verified on 2026-10-21
+## Verified on 2026-10-22
 
 | Component | Version | Verification |
 | --- | --- | --- |
-| Claude Code | 2.1.306 | Isolated MCP registration/repeated setup and plugin validation |
+| Claude Code | 2.1.308 | Isolated MCP registration/repeated setup and plugin validation |
 | Codex CLI | 0.163.0 | Isolated MCP registration/repeated setup and local marketplace/plugin installation |
 | QMD | 2.8.3 (`@tobilu/qmd`, published package) | Real indexing, scoped CLI search, MCP initialization/discovery/query and isolation between two same-named repositories |
 | Legacy QMD | 1.0.0 (existing local package) | Real indexing, scoped CLI search and MCP search/isolation |
 | Platform | macOS arm64 | Local regression tests and both Go test suites |
 
 The live checks use temporary HOME/config/cache directories and synthetic documents. They do not make LLM requests or modify personal client profiles. They test the installed MCP server directly after registering it with both clients; they do not prove model tool selection or UI hook trust/dispatch. Linux/macOS CI runs the regression suite; record its actual run result before release.
+
+Upgrade verification used the previous source at `b44e7f8`: its executable created a database with a session, knowledge and a fact. Running the new `init` and `init-metadata` twice preserved every row and passed SQLite integrity checks. Initialization also preserved a copy of this checkout's existing database. A copy of existing Claude settings migrated old hook timeouts to 10/5 seconds without changing unrelated settings, and repeated setup was idempotent.
+
+In this checkout, rebuilding the index covered 31 Markdown files. Real QMD retrieval and both prompt-hook entry points returned bounded context in under one second each. These direct script checks do not verify interactive client hook dispatch. Updating the checkout alone does not migrate personal hook settings or register MCP: run the setup commands below for those steps.
 
 QMD 2.8.3 exposes `query`, `get`, `multi_get`, and `status`; older QMD also exposes `search` and `vsearch`. Always discover schemas. For a model-free QMD 2.8.3 MCP query, use `searches: [{"type":"lex","query":"your term"}]` and `rerank: false`. Plain `query` may invoke local models. Installer examples pin QMD 2.8.3 so a dependency update is deliberate and testable.
 
