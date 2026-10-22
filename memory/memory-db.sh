@@ -9,31 +9,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LEGACY_SCRIPT="$SCRIPT_DIR/memory-db-legacy.sh"
-GO_DIR="$SCRIPT_DIR"
 
-# Resolve the target repo from the CALLER's working directory, before any
-# chdir below. The Go path has to chdir into GO_DIR for `go run` to resolve
-# the module, which destroys the cwd the binary would otherwise use to locate
-# the repo; passing it explicitly keeps both backends pointed at the same
-# per-repo database. Mirrors find_repo_root() in memory-db-legacy.sh.
-find_repo_root() {
-  local dir="$PWD"
-  while [ "$dir" != "/" ]; do
-    if [ -d "$dir/.git" ]; then
-      echo "$dir"
-      return 0
-    fi
-    dir="$(dirname "$dir")"
-  done
-  return 1
-}
-
-# An explicit MEMORY_REPO_ROOT from the environment always wins; the walk-up
-# is only the fallback. The Go side validates whichever value it receives.
+# Resolve from the caller before dispatching into the installed backend.
 if [ -n "${MEMORY_REPO_ROOT:-}" ]; then
   TARGET_REPO_ROOT="$MEMORY_REPO_ROOT"
 else
-  TARGET_REPO_ROOT="$(find_repo_root)" || TARGET_REPO_ROOT=""
+  TARGET_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || TARGET_REPO_ROOT=""
 fi
 
 CORE_COMMANDS=(
@@ -78,11 +59,6 @@ if [ -z "$cmd" ]; then
 fi
 
 if is_core_command "$cmd"; then
-  if ! command -v go >/dev/null 2>&1; then
-    echo "Go is required for command '$cmd'. Falling back to legacy shell implementation..." >&2
-    "$LEGACY_SCRIPT" "$@"
-    exit $?
-  fi
 
   if [ -z "$TARGET_REPO_ROOT" ]; then
     echo "memory-db: '$PWD' is not inside a git repository." >&2
@@ -90,16 +66,12 @@ if is_core_command "$cmd"; then
     exit 1
   fi
 
-  mkdir -p "$PLUGIN_ROOT/.claude-memory/.gocache" "$PLUGIN_ROOT/.claude-memory/.gotmp"
-  (
-    cd "$GO_DIR"
-    MEMORY_SCRIPT_DIR="$SCRIPT_DIR" \
-    MEMORY_REPO_ROOT="$TARGET_REPO_ROOT" \
-    GOCACHE="$PLUGIN_ROOT/.claude-memory/.gocache" \
-    GOTMPDIR="$PLUGIN_ROOT/.claude-memory/.gotmp" \
-    go run ./cmd/memorydb "$@"
-  )
-  exit $?
+  if [ ! -x "$SCRIPT_DIR/memorydb" ]; then
+    echo "Memory binary missing. Run: bash \"$PLUGIN_ROOT/scripts/build-memory.sh\"" >&2
+    exit 1
+  fi
+  MEMORY_SCRIPT_DIR="$SCRIPT_DIR" MEMORY_REPO_ROOT="$TARGET_REPO_ROOT" \
+    exec "$SCRIPT_DIR/memorydb" "$@"
 fi
 
 "$LEGACY_SCRIPT" "$@"

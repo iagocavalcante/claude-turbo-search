@@ -427,15 +427,19 @@ func (a *App) CmdAddSession(summary, files, tools, topics string) error {
 		}
 	}
 	sql := fmt.Sprintf(`INSERT INTO sessions (summary, files_touched, tools_used, topics)
-VALUES ('%s', '%s', '%s', '%s');`, db.SQLQuote(summary), db.SQLQuote(files), db.SQLQuote(tools), db.SQLQuote(topics))
-	if _, err := a.DB.RunSQL(sql); err != nil {
+VALUES ('%s', '%s', '%s', '%s'); SELECT last_insert_rowid();`, db.SQLQuote(summary), db.SQLQuote(files), db.SQLQuote(tools), db.SQLQuote(topics))
+	out, err := a.DB.RunSQL(sql)
+	if err != nil {
 		return err
 	}
-	if id, err := a.DB.ScalarInt("SELECT MAX(id) FROM sessions;"); err == nil {
-		a.extractEntities("session", id, summary, files)
+	id, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return fmt.Errorf("session saved but its ID could not be read: %w", err)
 	}
+	a.extractEntities("session", id, summary, files)
 	_ = a.maybeConsolidate()
 	fmt.Println("Session saved.")
+	fmt.Printf("Session ID: %d\n", id)
 	return nil
 }
 

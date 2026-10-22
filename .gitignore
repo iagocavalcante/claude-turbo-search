@@ -11,3 +11,7 @@ node_modules/
 # Compiled Go binaries (built locally, deployed via Docker)
 memory/memorydb
 web/cmd/server/server
+
+__pycache__/
+*.pyc
+memory/.memorydb.*

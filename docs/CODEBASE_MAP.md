@@ -159,7 +159,7 @@ claude-turbo-search/
 
 **Key commands**: `init`, `add-session`, `add-knowledge`, `add-fact`, `search`, `vsearch`, `context`, `consolidate`, `knowledge-graph`, `stats`, `token-stats`
 
-**Design**: Zero external Go dependencies. SQLite accessed by shelling to `sqlite3` binary. Each `go run` uses build cache in `.claude-memory/.gocache/`.
+**Design**: Zero external Go dependencies. SQLite accessed by shelling to `sqlite3` binary. Build once with `scripts/build-memory.sh`; the wrapper executes `memory/memorydb`.
 
 ### Hooks (`hooks/`)
 
@@ -276,7 +276,7 @@ sequenceDiagram
 
 1. **SQL injection**: Uses `SQLQuote()` (single-quote escaping) not parameterized queries — by design since DB client shells out to `sqlite3`
 2. **Vector search is brute-force**: Loads all embeddings into memory for cosine comparison, no ANN indexing
-3. **`go run` on every invocation**: First run after file changes is slow (~1-3s), then cached
+3. **Memory binary updates**: Rebuild with `scripts/build-memory.sh` after plugin updates; hooks never compile.
 4. **FTS entries not cleaned on consolidate**: Merged sessions don't update FTS — only deletes trigger FTS cleanup
 5. **Embedding generation is slow**: `embeddings.sh` pipes each float through python3+base64+xxd individually
 6. **`knowledge-graph-setup.md` references deleted Python file**: Docs may reference `knowledge_graph.py` which was replaced by Go
@@ -287,7 +287,7 @@ sequenceDiagram
 
 **To add a new skill**: Create `skills/<name>/SKILL.md` with YAML frontmatter, add path to `package.json` skills array
 
-**To add a new hook**: Create script in `hooks/`, update `scripts/setup-hooks.sh` to register it in `~/.claude/settings.json`
+**To add a new hook**: Keep client entry points in `hooks/`, implement shared behavior in `scripts/turbo.py`, and update its hook setup plus regression fixtures for both clients.
 
 **To modify entity extraction**: Edit `memory/internal/entity/entity.go` regex patterns
 

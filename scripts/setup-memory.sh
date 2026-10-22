@@ -21,18 +21,16 @@ NC='\033[0m'
 
 # Find repo root
 find_repo_root() {
-    local dir="$PWD"
-    while [ "$dir" != "/" ]; do
-        if [ -d "$dir/.git" ]; then
-            echo "$dir"
-            return 0
-        fi
-        dir="$(dirname "$dir")"
-    done
-    echo ""
+    local root
+    root=$(git -C "${MEMORY_REPO_ROOT:-$PWD}" rev-parse --show-toplevel 2>/dev/null) || return 1
+    if [ -n "${MEMORY_REPO_ROOT:-}" ] && [ "$(cd "$MEMORY_REPO_ROOT" && pwd -P)" != "$root" ]; then
+        echo "MEMORY_REPO_ROOT must point to a repository root" >&2
+        return 1
+    fi
+    printf '%s\n' "$root"
 }
 
-REPO_ROOT="$(find_repo_root)"
+REPO_ROOT="$(find_repo_root)" || REPO_ROOT=""
 if [ -z "$REPO_ROOT" ]; then
     echo -e "${RED}Error: Not in a git repository${NC}"
     echo "Memory is stored per-repository. Please run from within a git repo."
@@ -99,6 +97,8 @@ case "${1:-}" in
         # Make memory script executable
         chmod +x "$MEMORY_SCRIPT"
 
+        "$SCRIPT_DIR/build-memory.sh"
+
         # Initialize database
         "$MEMORY_SCRIPT" init
 
@@ -109,9 +109,11 @@ case "${1:-}" in
         GITIGNORE="$REPO_ROOT/.gitignore"
         if [ -f "$GITIGNORE" ]; then
             if ! grep -q ".claude-memory" "$GITIGNORE"; then
-                echo "" >> "$GITIGNORE"
-                echo "# Claude Code memory (local)" >> "$GITIGNORE"
-                echo ".claude-memory/" >> "$GITIGNORE"
+                {
+                    echo ""
+                    echo "# Turbo Search memory (local)"
+                    echo ".claude-memory/"
+                } >> "$GITIGNORE"
                 echo -e "${GREEN}Added .claude-memory/ to .gitignore${NC}"
             fi
         else

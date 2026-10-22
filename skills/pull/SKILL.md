@@ -3,6 +3,13 @@ name: pull
 description: Download the persistent memory database from your self-hosted dashboard into the current repo. Use after cloning a repo on a new machine to restore accumulated sessions, knowledge, facts, and embeddings for RAG/context.
 ---
 
+## Installed paths
+
+Resolve `PLUGIN_DIR` to the absolute directory two levels above this `SKILL.md` file.
+Use the skill's actual installed location, including plugin caches or symlinks; do not infer it from the project's working directory or a home-directory checkout.
+Set `PLUGIN_DIR` explicitly in each shell invocation below, keeping the working directory in the user's target repository.
+
+
 # /pull - Download Memory From Dashboard
 
 Restore the per-repo `memory.db` from your self-hosted Fly.io dashboard. The slug is computed from `git remote get-url origin`, so the same GitHub URL → same data on any machine. No per-repo config needed beyond the global `memory-db.sh config set` you ran once.
@@ -12,7 +19,7 @@ Restore the per-repo `memory.db` from your self-hosted Fly.io dashboard. The slu
 When the user invokes `/pull`, run:
 
 ```bash
-PLUGIN_DIR="${PLUGIN_DIR:-$HOME/claude-turbo-search}"
+: "${PLUGIN_DIR:?Set PLUGIN_DIR from this skill file location}"
 MEMORY_SCRIPT="$PLUGIN_DIR/memory/memory-db.sh"
 
 # Pass through any flags the user provided (e.g. --force).

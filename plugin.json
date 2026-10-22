@@ -1,0 +1,26 @@
+{
+  "name": "turbo-search",
+  "description": "Project-scoped document search and persistent memory for Claude Code and Codex",
+  "version": "1.6.0",
+  "author": {
+    "name": "Iago Cavalcante",
+    "url": "https://github.com/iagocavalcante"
+  },
+  "homepage": "https://github.com/iagocavalcante/claude-turbo-search",
+  "repository": "https://github.com/iagocavalcante/claude-turbo-search",
+  "license": "MIT",
+  "keywords": [
+    "search",
+    "semantic-search",
+    "qmd",
+    "indexing",
+    "token-savings",
+    "codebase"
+  ],
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/turbo-index/SKILL.md"
+    }
+  }
+}
