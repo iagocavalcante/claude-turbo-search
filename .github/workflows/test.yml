@@ -22,7 +22,7 @@ jobs:
         with:
           go-version-file: web/go.mod
           cache-dependency-path: web/go.sum
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.15'
       - name: Install CLI dependencies (Linux)
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.15'
       - name: Install pinned clients and dependencies
