@@ -32,6 +32,12 @@ CORE_COMMANDS=(
   context
   embed
   consolidate
+  supersede
+  restore
+  handoff
+  checkpoint
+  export
+  query
   entity-search
   stats
   token-stats

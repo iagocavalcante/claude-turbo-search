@@ -103,7 +103,8 @@ claude-turbo-search/
 ├── hooks/                   # Auto-triggered scripts
 │   ├── pre-prompt-search.sh # Simple keyword search hook
 │   ├── rag-context-hook.sh  # Full RAG pipeline hook
-│   └── track-activity.sh    # Tool usage logger
+│   ├── track-activity.sh    # Tool usage logger
+│   └── checkpoint-session.sh # Bounded lifecycle checkpoints
 ├── memory/                  # Persistent memory system
 │   ├── cmd/memorydb/        # Go CLI entry point
 │   ├── internal/
@@ -131,6 +132,7 @@ claude-turbo-search/
 │   ├── memory-stats/        # /memory-stats
 │   ├── qmd/                 # /qmd
 │   ├── remember/            # /remember
+│   ├── resume-memory/       # /resume-memory
 │   ├── token-stats/         # /token-stats
 │   └── turbo-index/         # /turbo-index
 ├── package.json             # Plugin manifest (declares skills)
@@ -150,14 +152,19 @@ claude-turbo-search/
 |------|---------|--------|
 | `memory-db.sh` | Router: dispatches to Go CLI or legacy shell | 407 |
 | `memory-db-legacy.sh` | Full Bash+SQLite fallback implementation | 7,587 |
-| `internal/commands/app.go` | All CRUD, search, analytics commands | 7,843 |
+| `internal/commands/app.go` | Dispatch, CRUD, legacy search and analytics commands | — |
+| `internal/commands/lifecycle.go` | Reversible supersession, exact duplicate consolidation and restore | — |
+| `internal/commands/handoff.go` | Structured session handoffs and atomic acceptance | — |
+| `internal/commands/retrieval.go` | Ranked keyword/entity/vector retrieval and bounded context | — |
+| `internal/commands/checkpoint.go` | Immutable, replay-safe automatic activity snapshots | — |
+| `internal/commands/export.go` | Read-only Markdown snapshots with stable record IDs | — |
 | `internal/commands/knowledge_graph.go` | ANSI TUI renderer (5 views) | 6,527 |
 | `internal/db/db.go` | SQLite client via subprocess | 379 |
 | `internal/entity/entity.go` | Regex entity extraction | 519 |
 | `internal/vector/vector.go` | Cosine similarity math | 316 |
 | `embeddings.sh` | Embedding generation (Ollama/OpenAI/Voyage) | 3,985 |
 
-**Key commands**: `init`, `add-session`, `add-knowledge`, `add-fact`, `search`, `vsearch`, `context`, `consolidate`, `knowledge-graph`, `stats`, `token-stats`
+**Key commands**: `init`, `add-session`, `add-knowledge`, `add-fact`, `search`, `vsearch`, `context`, `query`, `handoff`, `checkpoint`, `export`, `consolidate`, `supersede`, `restore`, `knowledge-graph`, `stats`, `token-stats`
 
 **Design**: Zero external Go dependencies. SQLite accessed by shelling to `sqlite3` binary. Build once with `scripts/build-memory.sh`; the wrapper executes `memory/memorydb`.
 
@@ -169,7 +176,8 @@ claude-turbo-search/
 |------|---------|---------|--------|
 | `rag-context-hook.sh` | Full RAG pipeline with intent classification | UserPromptSubmit | 3,708 |
 | `pre-prompt-search.sh` | Simple keyword search fallback | UserPromptSubmit | 740 |
-| `track-activity.sh` | Logs tool usage to activity.log | PostToolUse | 880 |
+| `track-activity.sh` | Logs bounded per-session file/tool observations | PostToolUse | — |
+| `checkpoint-session.sh` | Persists idempotent local activity snapshots | PreCompact, SessionEnd | — |
 
 **RAG pipeline flow**: Classify intent → Score complexity → Adjust budgets → Parallel retrieval (memory + QMD) → Deduplicate → Output XML context block.
 
@@ -233,11 +241,11 @@ sequenceDiagram
     Go->>DB: INSERT INTO sessions
     Go->>Go: extractEntities(text)
     Go->>DB: INSERT INTO entity_metadata
-    Go->>Go: maybeConsolidate()
+    Note over Go,DB: Consolidation is explicit and preserves originals
     Claude->>CLI: add-knowledge "area" "summary" "patterns"
     CLI->>Go: Execute
-    Go->>DB: UPSERT INTO knowledge
-    Claude->>Track: Clear activity.log
+    Go->>DB: Transactionally update/insert knowledge and refresh derived indexes
+    Note over Claude,Track: Session activity stays bounded; shared logs are not cleared
 ```
 
 ### RAG Context Injection (every prompt)
@@ -251,14 +259,12 @@ sequenceDiagram
     participant Claude
 
     User->>Hook: Submit prompt
-    Hook->>Hook: Classify intent
-    Hook->>Hook: Score complexity
     par Memory retrieval
-        Hook->>CLI: vsearch + context + entity-search
+        Hook->>CLI: context (offline keyword + entity ranking)
     and Code retrieval
         Hook->>QMD: search --files
     end
-    Hook->>Hook: Deduplicate results
+    Hook->>Hook: Reserve context space for ranked memory and documents
     Hook->>Claude: <relevant-context> XML block
     Claude->>User: Response with context
 ```
@@ -277,7 +283,7 @@ sequenceDiagram
 1. **SQL injection**: Uses `SQLQuote()` (single-quote escaping) not parameterized queries — by design since DB client shells out to `sqlite3`
 2. **Vector search is brute-force**: Loads all embeddings into memory for cosine comparison, no ANN indexing
 3. **Memory binary updates**: Rebuild with `scripts/build-memory.sh` after plugin updates; hooks never compile.
-4. **FTS entries not cleaned on consolidate**: Merged sessions don't update FTS — only deletes trigger FTS cleanup
+4. **Supersession preserves history**: Retrieval excludes superseded entries; graph/dashboard history still includes them. Older binaries ignore supersession.
 5. **Embedding generation is slow**: `embeddings.sh` pipes each float through python3+base64+xxd individually
 6. **`knowledge-graph-setup.md` references deleted Python file**: Docs may reference `knowledge_graph.py` which was replaced by Go
 
@@ -293,4 +299,4 @@ sequenceDiagram
 
 **To add a new DB table**: Create `schema-<name>.sql`, add `CmdInit<Name>()` to `app.go`, add to `memory-db.sh` CORE_COMMANDS
 
-**To change RAG retrieval behavior**: Edit `hooks/rag-context-hook.sh` — intent patterns in `classify_intent()`, budgets in `route_retrieval()`
+**To change RAG retrieval behavior**: Edit `memory/internal/commands/retrieval.go` for memory ranking and `scripts/turbo.py` for document retrieval, deadlines and the shared context budget.

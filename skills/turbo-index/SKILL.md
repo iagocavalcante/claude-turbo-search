@@ -41,3 +41,5 @@ Resolve `PLUGIN_DIR` to the absolute directory two levels above this skill file,
 Report what actually succeeded, missing dependencies and stale indexes. Do not claim measured token savings without measurements. Index refresh is explicit and never runs in a prompt hook.
 
 Optional: install hooks with `bash "$PLUGIN_DIR/scripts/setup-hooks.sh" --client codex --rag --memory` (or `claude`). For Claude only, `setup-file-suggestion.sh` adds file suggestions. Cartographer is optional; use it only if available and useful.
+
+The `--memory` option installs activity capture plus local `PreCompact`/`SessionEnd` checkpoints. These save bounded file/tool observations without reading transcripts or inferring unfinished work. Re-run hook setup after upgrading to register these handlers; hooks never initialize a missing database. Use `/remember` for durable conclusions and a structured handoff.

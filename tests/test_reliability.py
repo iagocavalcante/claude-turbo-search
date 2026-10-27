@@ -174,7 +174,8 @@ class ReliabilityTests(unittest.TestCase):
         path = directory / 'settings.json'
         foreign = {'type': 'prompt', 'prompt': 'keep me'}
         original = {'permissions': {'allow': ['Read']}, 'hooks': {'UserPromptSubmit': [{'hooks': [
-            foreign, {'type': 'command', 'command': '/old/rag-context-hook.sh'}]}]}}
+            foreign, {'type': 'command', 'command': '/old/rag-context-hook.sh'}]}],
+            'PreCompact': [{'hooks': [foreign]}]}}
         path.write_text(json.dumps(original))
         with patch.dict(os.environ, {'HOME': str(self.base), 'CODEX_HOME': str(self.base / '.codex'), 'CLAUDE_CONFIG_DIR': str(self.base / '.claude')}), contextlib.redirect_stdout(io.StringIO()):
             turbo.setup_hooks('both', 'rag', True, False)
@@ -186,9 +187,16 @@ class ReliabilityTests(unittest.TestCase):
             self.assertEqual(config['hooks']['UserPromptSubmit'][0]['hooks'], [foreign])
             self.assertEqual(config['hooks']['UserPromptSubmit'][1]['hooks'][0]['timeout'], 10)
             self.assertEqual(config['hooks']['PostToolUse'][0]['hooks'][0]['timeout'], 5)
+            self.assertEqual(config['hooks']['PreCompact'][0]['hooks'], [foreign])
+            self.assertEqual(config['hooks']['SessionEnd'][0]['hooks'][0]['timeout'], 3)
+            self.assertIn('--agent claude', config['hooks']['PreCompact'][1]['hooks'][0]['command'])
+            codex = json.loads((self.base / '.codex/hooks.json').read_text())
+            self.assertIn('--agent codex', codex['hooks']['SessionEnd'][0]['hooks'][0]['command'])
             turbo.setup_hooks('both', 'simple', False, True)
             config = json.loads(path.read_text())
             self.assertEqual(config['hooks']['UserPromptSubmit'], [{'hooks': [foreign]}])
+            self.assertEqual(config['hooks']['PreCompact'], [{'hooks': [foreign]}])
+            self.assertNotIn('SessionEnd', config['hooks'])
             path.write_text('{bad')
             with self.assertRaises(ValueError):
                 turbo.setup_hooks('claude', 'rag', True, False)
@@ -268,20 +276,24 @@ sys.exit(1)
         self.assertIn('untrusted evidence', result.stdout)
         self.assertFalse((self.base / '.claude-memory').exists())
 
-    def test_missing_embeddings_preserve_memory_context(self):
+    def test_memory_context_uses_one_offline_ranked_query(self):
         turbo.memory_dir(self.repo).mkdir()
         (turbo.memory_dir(self.repo) / 'memory.db').touch()
-        calls = []
-        def fake(args, **kwargs):
-            calls.append(args[2])
-            if args[2] == 'vsearch':
-                raise RuntimeError('provider unavailable')
-            return 'Saved historical context'
-        with patch.object(turbo, 'run', side_effect=fake):
-            result = turbo.memory_context(self.repo, 'authentication', 'general')
+        with patch.object(turbo, 'run', return_value='[fact:1] Saved historical context') as run:
+            result = turbo.memory_context(self.repo, 'authentication')
         self.assertIn('Saved historical context', result)
-        self.assertIn('vsearch', calls)
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.args[0][2:], ['context', 'authentication', '500'])
+        with patch.object(turbo, 'run', side_effect=RuntimeError('unavailable')):
+            self.assertEqual(turbo.memory_context(self.repo, 'authentication'), '')
         self.assertIn('unavailable', (turbo.memory_dir(self.repo) / 'rag-hook.log').read_text())
+
+    def test_documents_cannot_crowd_out_memory(self):
+        results = [{'path': f'{i}.md', 'snippet': 'documentation ' * 80} for i in range(10)]
+        output = turbo.context_output(self.repo, results, '[fact:8] Use PKCE for authentication', budget=1600)
+        self.assertIn('[fact:8] Use PKCE', output)
+        self.assertLessEqual(len(output), 1600)
+        self.assertEqual(turbo.context_output(self.repo, results, 'memory', budget=10), '')
 
     def test_mcp_refuses_missing_or_stale_snapshot(self):
         result = subprocess.run(['bash', str(ROOT / 'scripts/qmd-mcp.sh')], cwd=self.repo,
@@ -304,6 +316,139 @@ sys.exit(1)
             text = skill.read_text()
             self.assertNotIn('$HOME/claude-turbo-search', text)
             self.assertNotIn('~/.claude/plugins', text)
+        skill_paths = {str(p.relative_to(ROOT)) for p in (ROOT / 'skills').iterdir() if p.is_dir()}
+        self.assertEqual(set(manifests[2]['claude-code']['skills']), skill_paths)
+        marketplace = json.loads((ROOT / 'marketplace.json').read_text())
+        self.assertEqual({s['path'] for s in marketplace['skills']}, skill_paths)
+
+    def test_memory_lifecycle_cli_and_prompt(self):
+        import sqlite3
+        command = ['bash', str(ROOT / 'memory/memory-db.sh')]
+        def call(*args, payload=None):
+            result = subprocess.run(command + list(args), cwd=self.repo, input=payload,
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout
+        call('init')
+        call('add-fact', 'Authentication uses obsolete implicit flow', 'auth')
+        call('add-fact', 'Authentication uses PKCE', 'auth')
+        call('supersede', 'fact', '1', '2')
+        hits = json.loads(call('query', '--explain', 'What authentication flow?'))
+        self.assertEqual([h['source_id'] for h in hits], [2])
+        self.assertIn('fts', hits[0]['ranks'])
+        result = self.call_hook('rag-context-hook.sh', json.dumps({
+            'cwd': str(self.repo), 'prompt': 'What authentication flow?'}))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('PKCE', result.stdout)
+        self.assertNotIn('obsolete', result.stdout)
+        payload = json.dumps({'source_agent': 'claude', 'source_session': 'source-session',
+                              'objective': 'Finish authentication', 'next_steps': ['Test callback']})
+        saved = json.loads(call('handoff', 'save', payload=payload))[0]
+        claimed = json.loads(call('handoff', 'accept', str(saved['id']), 'codex:new-session'))[0]
+        self.assertEqual(claimed['status'], 'accepted')
+        self.assertEqual(claimed['payload']['next_steps'], ['Test callback'])
+        self.assertEqual(json.loads(call('handoff', 'list')), [])
+        call('restore', 'fact', '1')
+        self.assertEqual(len(json.loads(call('query', 'Authentication'))), 2)
+        legacy = ['bash', str(ROOT / 'memory/memory-db-legacy.sh')]
+        for _ in range(11):
+            result = subprocess.run(legacy + ['add-session', 'Same task', '[]', '[]', 'auth'],
+                                    cwd=self.repo, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        result = subprocess.run(legacy + ['consolidate'], cwd=self.repo,
+                                text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with contextlib.closing(sqlite3.connect(self.repo / '.claude-memory/memory.db')) as connection:
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM sessions').fetchone()[0], 11)
+
+    def call_checkpoint(self, session='one', event='PreCompact', raw=None):
+        return subprocess.run(['bash', str(ROOT / 'hooks/checkpoint-session.sh'), '--agent', 'codex'],
+                              input=raw if raw is not None else json.dumps({
+                                  'cwd': str(self.repo), 'session_id': session, 'hook_event_name': event,
+                                  'transcript_path': str(self.base / 'never-read-transcript')}),
+                              cwd=self.base, text=True, capture_output=True, timeout=5)
+
+    def test_checkpoint_lifecycle_is_private_idempotent_and_searchable(self):
+        import sqlite3
+        command = ['bash', str(ROOT / 'memory/memory-db.sh')]
+        subprocess.run(command + ['init'], cwd=self.repo, check=True, capture_output=True)
+        (self.base / 'never-read-transcript').write_text('RAW_TRANSCRIPT_SECRET')
+        for tool, file in [('Read', 'src/auth.go'), ('Read', '.env'), ('Read', 'credentials.json'),
+                           ('Read', 'server.pem'), ('Read', '../outside'), ('Bash', '')]:
+            result = self.call_hook('track-activity.sh', json.dumps({
+                'cwd': str(self.repo), 'session_id': 'one', 'tool_name': tool,
+                'tool_input': {'file_path': file, 'command': 'export RAW_COMMAND_SECRET=1'},
+                'tool_response': 'RAW_OUTPUT_SECRET'}))
+            self.assertEqual(result.returncode, 0, result.stderr)
+        for event in ('PreCompact', 'SessionEnd', 'SessionEnd'):
+            result = self.call_checkpoint(event=event)
+            self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+        with contextlib.closing(sqlite3.connect(self.repo / '.claude-memory/memory.db')) as connection:
+            rows = connection.execute('SELECT summary,files_touched,tools_used FROM sessions').fetchall()
+            self.assertEqual(len(rows), 1)
+            self.assertIn('6 tool events', rows[0][0])
+            self.assertEqual(json.loads(rows[0][1]), ['src/auth.go'])
+            self.assertEqual(json.loads(rows[0][2]), ['Bash', 'Read'])
+            for forbidden in ('RAW_TRANSCRIPT_SECRET', 'RAW_COMMAND_SECRET', 'RAW_OUTPUT_SECRET', 'credentials', '.env', 'server.pem', 'outside'):
+                self.assertNotIn(forbidden, str(rows))
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM handoffs').fetchone()[0], 0)
+        result = subprocess.run(command + ['query', 'src/auth.go'], cwd=self.repo,
+                                text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Automatic activity checkpoint', result.stdout)
+        export = self.base / 'memory.md'
+        result = subprocess.run(command + ['export', str(export)], cwd=self.repo,
+                                text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('## checkpoint:1', export.read_text())
+
+    def test_checkpoint_bounds_invalid_input_and_no_implicit_initialization(self):
+        for raw in ('broken', '[]', '{}'):
+            result = self.call_checkpoint(raw=raw)
+            self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+        result = self.call_checkpoint(event='Stop')
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+        self.assertFalse(turbo.memory_dir(self.repo).exists())
+        path = turbo.session_file(self.repo, 'one')
+        path.parent.mkdir(parents=True)
+        path.write_text(''.join(json.dumps({'tool': 'Read', 'files': [f'src/file-{i}.go']}) + '\n' for i in range(205)))
+        result = self.call_checkpoint()
+        self.assertEqual(result.returncode, 0)
+        self.assertFalse((turbo.memory_dir(self.repo) / 'memory.db').exists())
+        (turbo.memory_dir(self.repo) / 'memory.db').touch()
+        actual_run = turbo.run
+        def call(args, **kwargs):
+            if args[-1] == 'checkpoint':
+                return ''
+            return actual_run(args, **kwargs)
+        with patch.object(turbo, 'envelope', return_value={
+                'cwd': str(self.repo), 'session_id': 'one', 'hook_event_name': 'SessionEnd'}), \
+                patch.object(turbo, 'run', side_effect=call) as run:
+            turbo.checkpoint('codex')
+        payload = json.loads(run.call_args.kwargs['input_text'])
+        self.assertEqual(payload['event_count'], 200)
+        self.assertEqual(len(payload['files']), 32)
+
+    def test_checkpoint_lock_timeout_retains_activity_and_can_retry(self):
+        import sqlite3
+        command = ['bash', str(ROOT / 'memory/memory-db.sh')]
+        subprocess.run(command + ['init'], cwd=self.repo, check=True, capture_output=True)
+        self.call_hook('track-activity.sh', json.dumps({'cwd': str(self.repo), 'session_id': 'one',
+                       'tool_name': 'Read', 'tool_input': {'file_path': 'src/auth.go'}}))
+        path = turbo.session_file(self.repo, 'one')
+        before = path.read_text()
+        with contextlib.closing(sqlite3.connect(self.repo / '.claude-memory/memory.db')) as connection:
+            connection.execute('BEGIN EXCLUSIVE')
+            started = time.monotonic()
+            result = self.call_checkpoint()
+            self.assertLess(time.monotonic() - started, 3)
+            self.assertEqual((result.returncode, result.stdout, result.stderr), (0, '', ''))
+            connection.rollback()
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM sessions').fetchone()[0], 0)
+        self.assertEqual(path.read_text(), before)
+        self.assertEqual(self.call_checkpoint().returncode, 0)
+        with contextlib.closing(sqlite3.connect(self.repo / '.claude-memory/memory.db')) as connection:
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM sessions').fetchone()[0], 1)
 
     def test_concurrent_sessions_return_their_own_ids(self):
         import sqlite3

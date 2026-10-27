@@ -28,6 +28,8 @@ python3 "$PLUGIN_DIR/scripts/turbo.py" activity-read --session "$SESSION_ID"
 
 If the ID is unavailable, summarize the current conversation. Do not guess an ID, read another session's activity, or combine logs. Legacy `.claude-memory/activity.log` remains untouched and must not be treated as current-session evidence.
 
+Automatic lifecycle checkpoints, when enabled, contain only bounded file/tool observations. They do not establish completed work, failed approaches, or next steps; use this conversation to write those conclusions.
+
 ### 2. Analyze the Session
 
 Review what was accomplished in this conversation:
@@ -100,6 +102,38 @@ If during the session you learned something important about the codebase that sh
 "$MEMORY_SCRIPT" add-fact "Uses PostgreSQL with Prisma ORM" "architecture"
 "$MEMORY_SCRIPT" add-fact "All API routes require authentication except /health" "convention"
 ```
+
+### 6.4. Save an unfinished-work handoff
+
+When work remains, save a structured checkpoint for another Claude/Codex session.
+Use `handoff save`, which reads one JSON object from stdin. Serialize the actual
+values as JSON; do not interpolate conversation text into executable shell code.
+The payload has these fields:
+
+```json
+{
+  "source_agent": "codex",
+  "source_session": "ACTUAL_RUNTIME_SESSION_ID",
+  "objective": "Complete the authentication migration",
+  "completed": ["Added authorization code flow with PKCE"],
+  "failed_approaches": ["Cookie-only authentication did not support mobile callbacks"],
+  "open_questions": ["Does the mobile callback need a separate allowlist?"],
+  "next_steps": ["Verify the callback tests"]
+}
+```
+
+Send the serialized payload to `"$MEMORY_SCRIPT" handoff save`. Identify the
+actual runtime agent. If the runtime session ID is unavailable, use
+`memory:<MEMORY_SESSION_ID>` with the ID returned by this save, never an ID
+looked up from another session. Skip handoff saving if neither ID is available.
+Use only this conversation's evidence, omit secrets and raw tool output, and
+leave unknown fields as empty lists instead of guessing. The CLI records the
+checkout path, branch and commit itself. Payloads are limited to 16 KiB.
+
+Saving again for the same source agent/session refreshes its open handoff.
+Accepted handoffs cannot be overwritten. Report failures without undoing the
+session summary. For completed work, do not create a pending handoff.
+Mention the saved handoff ID and `/resume-memory` in the confirmation.
 
 ### 6.5. Token estimates
 

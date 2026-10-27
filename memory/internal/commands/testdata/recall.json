@@ -1,0 +1,19 @@
+{
+  "facts": [
+    "Authentication uses implicit flow OLD_DECISION.",
+    "Authentication uses authorization code with PKCE.",
+    "Payment retries use an idempotency key.",
+    "AuthService validates callback state before exchanging tokens.",
+    "Payment retries use an idempotency key.",
+    "Autenticação exige validação do estado."
+  ],
+  "cases": [
+    {"query": "What did we decide about authentication?", "want": "PKCE", "reject": "OLD_DECISION"},
+    {"query": "How are payment retries handled?", "want": "idempotency key", "reject": "PKCE"},
+    {"query": "Where is AuthService?", "want": "callback state", "reject": "OLD_DECISION"},
+    {"query": "authentication \" OR ) NEAR(foo", "want": "PKCE", "reject": "OLD_DECISION"},
+    {"query": "autenticação", "want": "validação", "reject": "OLD_DECISION"},
+    {"query": "quantumunicorn", "want": "", "reject": ""},
+    {"query": "?!", "want": "", "reject": ""}
+  ]
+}

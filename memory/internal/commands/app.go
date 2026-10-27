@@ -9,14 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"claude-turbo-search/memorydb/internal/db"
 	"claude-turbo-search/memorydb/internal/entity"
-	"claude-turbo-search/memorydb/internal/vector"
 )
 
 type App struct {
@@ -73,6 +71,21 @@ func (a *App) Execute(cmd string, args []string) error {
 			category = args[1]
 		}
 		return a.CmdAddFact(arg(args, 0), category)
+	case "query":
+		return a.CmdQuery(args)
+	case "checkpoint":
+		if len(args) != 0 {
+			return errors.New("checkpoint reads one JSON object from stdin")
+		}
+		return a.saveCheckpoint(os.Stdin)
+	case "export":
+		return a.CmdExport(args)
+	case "handoff":
+		return a.CmdHandoff(args)
+	case "restore":
+		return a.CmdRestore(args)
+	case "supersede":
+		return a.CmdSupersede(args)
 	case "search":
 		limit := parseIntOrDefault(arg(args, 1), 10)
 		return a.CmdSearch(arg(args, 0), limit)
@@ -122,7 +135,7 @@ func (a *App) Execute(cmd string, args []string) error {
 }
 
 func Usage() string {
-	return "Usage: memorydb {init|init-vector|init-metadata|init-token-metrics|search|vsearch|add-session|add-knowledge|add-fact|add-token-metrics|recent|context|embed|consolidate|entity-search|stats|token-stats|knowledge-graph|config|push|pull}"
+	return "Usage: memorydb {init|init-vector|init-metadata|init-token-metrics|search|query|vsearch|handoff|checkpoint|export|supersede|restore|add-session|add-knowledge|add-fact|add-token-metrics|recent|context|embed|consolidate|entity-search|stats|token-stats|knowledge-graph|config|push|pull}"
 }
 
 func arg(args []string, idx int) string {
@@ -173,48 +186,6 @@ func compressMemory(text string) string {
 	return strings.Join(strings.Fields(padded), " ")
 }
 
-func parseCSV(value string) []string {
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func toSet(items []string) map[string]bool {
-	set := make(map[string]bool, len(items))
-	for _, item := range items {
-		if item != "" {
-			set[item] = true
-		}
-	}
-	return set
-}
-
-func overlapPercent(aSet, bSet map[string]bool) int {
-	if len(aSet) == 0 || len(bSet) == 0 {
-		return 0
-	}
-	overlap := 0
-	for t := range aSet {
-		if bSet[t] {
-			overlap++
-		}
-	}
-	minLen := len(aSet)
-	if len(bSet) < minLen {
-		minLen = len(bSet)
-	}
-	if minLen == 0 {
-		return 0
-	}
-	return (overlap * 100) / minLen
-}
-
 func truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
@@ -222,30 +193,31 @@ func truncate(s string, max int) string {
 	return s[:max]
 }
 
-func (a *App) extractEntities(sourceType string, sourceID int, text, filesJSON string) {
-	if !a.DB.HasTable("entity_metadata") {
-		return
-	}
-
-	execInsert := func(val, entityType string) {
-		val = strings.TrimSpace(val)
-		if val == "" {
-			return
+func entityInserts(sourceType, sourceID, text, filesJSON string) string {
+	var sql strings.Builder
+	insert := func(value, kind string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			fmt.Fprintf(&sql, "INSERT OR IGNORE INTO entity_metadata(entity,entity_type,source_type,source_id) VALUES ('%s','%s','%s',%s);\n",
+				db.SQLQuote(value), db.SQLQuote(kind), db.SQLQuote(sourceType), sourceID)
 		}
-		sql := fmt.Sprintf(`INSERT OR IGNORE INTO entity_metadata (entity, entity_type, source_type, source_id)
-VALUES ('%s', '%s', '%s', %d);`, db.SQLQuote(val), db.SQLQuote(entityType), db.SQLQuote(sourceType), sourceID)
-		_, _ = a.DB.RunSQL(sql)
 	}
-
 	files, concepts, packages := entity.Extract(text, filesJSON)
-	for _, f := range files {
-		execInsert(f, "file")
+	for _, value := range files {
+		insert(value, "file")
 	}
-	for _, c := range concepts {
-		execInsert(c, "concept")
+	for _, value := range concepts {
+		insert(value, "concept")
 	}
-	for _, p := range packages {
-		execInsert(p, "package")
+	for _, value := range packages {
+		insert(value, "package")
+	}
+	return sql.String()
+}
+
+func (a *App) extractEntities(sourceType string, sourceID int, text, filesJSON string) {
+	if a.DB.HasTable("entity_metadata") {
+		_, _ = a.DB.RunSQL(entityInserts(sourceType, strconv.Itoa(sourceID), text, filesJSON))
 	}
 }
 
@@ -266,6 +238,13 @@ func (a *App) CmdInit() error {
 		return fmt.Errorf("failed to read schema: %w", err)
 	}
 	if _, err := a.DB.RunSQL(string(schema)); err != nil {
+		return err
+	}
+
+	if err := a.ensureHandoffs(); err != nil {
+		return err
+	}
+	if err := a.ensureCheckpoints(); err != nil {
 		return err
 	}
 
@@ -437,7 +416,6 @@ VALUES ('%s', '%s', '%s', '%s'); SELECT last_insert_rowid();`, db.SQLQuote(summa
 		return fmt.Errorf("session saved but its ID could not be read: %w", err)
 	}
 	a.extractEntities("session", id, summary, files)
-	_ = a.maybeConsolidate()
 	fmt.Println("Session saved.")
 	fmt.Printf("Session ID: %d\n", id)
 	return nil
@@ -457,17 +435,28 @@ func (a *App) CmdAddKnowledge(area, summary, patterns string) error {
 			return err
 		}
 	}
-	sql := fmt.Sprintf(`INSERT INTO knowledge (area, summary, patterns)
-VALUES ('%s', '%s', '%s')
-ON CONFLICT(area) DO UPDATE SET
-  summary = excluded.summary,
-  patterns = excluded.patterns,
-  updated_at = CURRENT_TIMESTAMP;`, db.SQLQuote(area), db.SQLQuote(summary), db.SQLQuote(patterns))
-	if _, err := a.DB.RunSQL(sql); err != nil {
-		return err
+	embeddingUpdate := ""
+	if a.DB.HasTable("vector_meta") {
+		embeddingUpdate = ", embedding = NULL"
 	}
-	if id, err := a.DB.ScalarInt(fmt.Sprintf("SELECT id FROM knowledge WHERE area = '%s';", db.SQLQuote(area))); err == nil {
-		a.extractEntities("knowledge", id, summary, "")
+	// Separate UPDATE/INSERT keeps legacy queue triggers' conflict policies intact.
+	sql := fmt.Sprintf(`BEGIN IMMEDIATE;
+UPDATE knowledge SET summary='%[2]s', patterns='%[3]s', updated_at=CURRENT_TIMESTAMP%[4]s
+WHERE area='%[1]s';
+INSERT INTO knowledge(area,summary,patterns)
+SELECT '%[1]s','%[2]s','%[3]s' WHERE NOT EXISTS (SELECT 1 FROM knowledge WHERE area='%[1]s');`,
+		db.SQLQuote(area), db.SQLQuote(summary), db.SQLQuote(patterns), embeddingUpdate)
+	sourceID := fmt.Sprintf("(SELECT id FROM knowledge WHERE area='%s')", db.SQLQuote(area))
+	if a.DB.HasTable("entity_metadata") {
+		sql += "DELETE FROM entity_metadata WHERE source_type='knowledge' AND source_id=" + sourceID + ";\n"
+		sql += entityInserts("knowledge", sourceID, area+" "+summary+" "+patterns, "")
+	}
+	if a.DB.HasTable("embedding_queue") {
+		sql += fmt.Sprintf(`INSERT OR REPLACE INTO embedding_queue(source_type,source_id,content,status)
+VALUES ('knowledge',%s,'%s','pending');`, sourceID, db.SQLQuote(area+" "+summary+" "+patterns))
+	}
+	if _, err := a.DB.RunSQL(sql + "COMMIT;"); err != nil {
+		return err
 	}
 	fmt.Printf("Knowledge saved for: %s\n", area)
 	return nil
@@ -491,22 +480,15 @@ func (a *App) CmdAddFact(fact, category string) error {
 		}
 	}
 	sql := fmt.Sprintf(`INSERT INTO facts (fact, category)
-VALUES ('%s', '%s');`, db.SQLQuote(fact), db.SQLQuote(category))
-	if _, err := a.DB.RunSQL(sql); err != nil {
+VALUES ('%s', '%s'); SELECT last_insert_rowid();`, db.SQLQuote(fact), db.SQLQuote(category))
+	out, err := a.DB.RunSQL(sql)
+	if err != nil {
 		return err
 	}
-	if id, err := a.DB.ScalarInt("SELECT MAX(id) FROM facts;"); err == nil {
+	if id, err := strconv.Atoi(strings.TrimSpace(out)); err == nil {
 		a.extractEntities("fact", id, fact, "")
 	}
 	fmt.Println("Fact saved.")
-	return nil
-}
-
-func (a *App) maybeConsolidate() error {
-	recentCount, err := a.DB.ScalarInt("SELECT COUNT(*) FROM sessions WHERE created_at > datetime('now', '-30 days');")
-	if err == nil && recentCount >= 10 {
-		_, _, _ = a.consolidate()
-	}
 	return nil
 }
 
@@ -520,9 +502,9 @@ func (a *App) CmdSearch(query string, limit int) error {
 	sql := fmt.Sprintf(`SELECT source_type, source_id,
   snippet(memory_fts, 0, '**', '**', '...', 32) as match
 FROM memory_fts
-WHERE memory_fts MATCH '%s'
+WHERE memory_fts MATCH '%s' AND %s
 ORDER BY rank
-LIMIT %d;`, db.SQLQuote(query), limit)
+LIMIT %d;`, db.SQLQuote(query), a.activeEntry("source_type", "source_id"), limit)
 	out, err := a.DB.Run("-json", sql)
 	if err != nil {
 		return err
@@ -551,70 +533,10 @@ func (a *App) CmdVSearch(query string, limit int) error {
 		return a.CmdSearch(query, limit)
 	}
 
-	results := make([]scoredResult, 0)
-
-	sessionRows, _ := a.DB.Run("-separator", "\t", "SELECT id, summary, hex(embedding) FROM sessions WHERE embedding IS NOT NULL;")
-	for _, line := range strings.Split(strings.TrimSpace(sessionRows), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) != 3 {
-			continue
-		}
-		id, err := strconv.Atoi(parts[0])
-		if err != nil {
-			continue
-		}
-		emb, err := vector.HexBlobToFloat64(parts[2])
-		if err != nil {
-			continue
-		}
-		results = append(results, scoredResult{sourceType: "session", sourceID: id, content: parts[1], similarity: vector.CosineSimilarity(queryVec, emb)})
+	results, err := a.vectorResults(queryVec)
+	if err != nil {
+		return err
 	}
-
-	knowledgeRows, _ := a.DB.Run("-separator", "\t", "SELECT id, area, summary, hex(embedding) FROM knowledge WHERE embedding IS NOT NULL;")
-	for _, line := range strings.Split(strings.TrimSpace(knowledgeRows), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 4)
-		if len(parts) != 4 {
-			continue
-		}
-		id, err := strconv.Atoi(parts[0])
-		if err != nil {
-			continue
-		}
-		emb, err := vector.HexBlobToFloat64(parts[3])
-		if err != nil {
-			continue
-		}
-		content := fmt.Sprintf("%s: %s", parts[1], parts[2])
-		results = append(results, scoredResult{sourceType: "knowledge", sourceID: id, content: content, similarity: vector.CosineSimilarity(queryVec, emb)})
-	}
-
-	factRows, _ := a.DB.Run("-separator", "\t", "SELECT id, fact, hex(embedding) FROM facts WHERE embedding IS NOT NULL;")
-	for _, line := range strings.Split(strings.TrimSpace(factRows), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) != 3 {
-			continue
-		}
-		id, err := strconv.Atoi(parts[0])
-		if err != nil {
-			continue
-		}
-		emb, err := vector.HexBlobToFloat64(parts[2])
-		if err != nil {
-			continue
-		}
-		results = append(results, scoredResult{sourceType: "fact", sourceID: id, content: parts[1], similarity: vector.CosineSimilarity(queryVec, emb)})
-	}
-
-	sort.Slice(results, func(i, j int) bool { return results[i].similarity > results[j].similarity })
 	printed := 0
 	for _, r := range results {
 		if printed >= limit {
@@ -631,6 +553,7 @@ func (a *App) CmdVSearch(query string, limit int) error {
 
 func (a *App) generateEmbedding(text string) ([]float64, error) {
 	cmd := exec.Command(a.EmbeddingsScript, "generate", text)
+	cmd.Dir = a.RepoRoot
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, err
@@ -686,121 +609,6 @@ func (a *App) runExternalWithTTY(command string, args ...string) error {
 	return cmd.Run()
 }
 
-func (a *App) CmdConsolidate() error {
-	merged, removed, err := a.consolidate()
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Consolidation complete: %d merged, %d removed.\n", merged, removed)
-	return nil
-}
-
-func (a *App) consolidate() (int, int, error) {
-	if !a.dbExists() {
-		return 0, 0, errors.New("no memory database found")
-	}
-
-	merged := 0
-	removed := 0
-	sessionRows, err := a.DB.Run("-separator", "\t", "SELECT id, COALESCE(topics, ''), COALESCE(summary, '') FROM sessions ORDER BY created_at DESC;")
-	if err != nil {
-		return 0, 0, err
-	}
-	type sessionRec struct {
-		id      int
-		topics  map[string]bool
-		summary string
-	}
-	sessions := []sessionRec{}
-	for _, line := range strings.Split(strings.TrimSpace(sessionRows), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) < 3 {
-			continue
-		}
-		id, err := strconv.Atoi(parts[0])
-		if err != nil {
-			continue
-		}
-		sessions = append(sessions, sessionRec{id: id, topics: toSet(parseCSV(parts[1])), summary: parts[2]})
-	}
-
-	toDelete := map[int]bool{}
-	for i := 0; i < len(sessions); i++ {
-		aRec := sessions[i]
-		if toDelete[aRec.id] || len(aRec.topics) == 0 {
-			continue
-		}
-		for j := i + 1; j < len(sessions); j++ {
-			bRec := sessions[j]
-			if toDelete[bRec.id] || len(bRec.topics) == 0 {
-				continue
-			}
-			if overlapPercent(aRec.topics, bRec.topics) > 50 {
-				mergedSummary := compressMemory(aRec.summary + " " + bRec.summary)
-				updateSQL := fmt.Sprintf("UPDATE sessions SET summary='%s' WHERE id=%d;", db.SQLQuote(mergedSummary), aRec.id)
-				if _, err := a.DB.RunSQL(updateSQL); err == nil {
-					aRec.summary = mergedSummary
-					sessions[i] = aRec
-					toDelete[bRec.id] = true
-					merged++
-				}
-			}
-		}
-	}
-
-	for id := range toDelete {
-		if _, err := a.DB.RunSQL(fmt.Sprintf("DELETE FROM sessions WHERE id=%d;", id)); err == nil {
-			if a.DB.HasTable("entity_metadata") {
-				_, _ = a.DB.RunSQL(fmt.Sprintf("DELETE FROM entity_metadata WHERE source_type='session' AND source_id=%d;", id))
-			}
-			removed++
-		}
-	}
-
-	pairs, _ := a.DB.Run(`SELECT f1.id, f2.id FROM facts f1
-JOIN facts f2 ON f1.id < f2.id AND f1.category = f2.category
-WHERE f1.fact = f2.fact OR INSTR(f1.fact, f2.fact) > 0 OR INSTR(f2.fact, f1.fact) > 0;`)
-	factDelete := map[int]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(pairs), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "|", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		id1, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
-		id2, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		len1, err1 := a.DB.ScalarInt(fmt.Sprintf("SELECT LENGTH(fact) FROM facts WHERE id=%d;", id1))
-		len2, err2 := a.DB.ScalarInt(fmt.Sprintf("SELECT LENGTH(fact) FROM facts WHERE id=%d;", id2))
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		if len1 >= len2 {
-			factDelete[id2] = true
-		} else {
-			factDelete[id1] = true
-		}
-	}
-
-	for id := range factDelete {
-		if _, err := a.DB.RunSQL(fmt.Sprintf("DELETE FROM facts WHERE id=%d;", id)); err == nil {
-			if a.DB.HasTable("entity_metadata") {
-				_, _ = a.DB.RunSQL(fmt.Sprintf("DELETE FROM entity_metadata WHERE source_type='fact' AND source_id=%d;", id))
-			}
-			removed++
-		}
-	}
-
-	return merged, removed, nil
-}
-
 func (a *App) CmdEntitySearch(query, entityType string) error {
 	if !a.dbExists() {
 		return errors.New("no memory database found")
@@ -823,9 +631,9 @@ func (a *App) CmdEntitySearch(query, entityType string) error {
         WHEN 'fact' THEN (SELECT fact FROM facts WHERE id = em.source_id)
     END as context
 FROM entity_metadata em
-WHERE em.entity LIKE '%%%s%%'%s
+WHERE em.entity LIKE '%%%s%%'%s AND %s
 ORDER BY em.created_at DESC
-LIMIT 10;`, db.SQLQuote(query), filter)
+LIMIT 10;`, db.SQLQuote(query), filter, a.activeEntry("em.source_type", "em.source_id"))
 	out, err := a.DB.Run(sql)
 	if err != nil {
 		return err
@@ -840,80 +648,12 @@ func (a *App) CmdRecent(limit int) error {
 	}
 	sql := fmt.Sprintf(`SELECT id, created_at, summary, topics
 FROM sessions
-ORDER BY created_at DESC
-LIMIT %d;`, limit)
+WHERE %s
+ORDER BY created_at DESC, id DESC
+LIMIT %d;`, a.activeEntry("'session'", "sessions.id"), limit)
 	out, err := a.DB.Run("-json", sql)
 	if err != nil {
 		return err
-	}
-	fmt.Print(out)
-	return nil
-}
-
-func (a *App) CmdContext(query string, tokenLimit int) error {
-	if !a.dbExists() {
-		return nil
-	}
-	charLimit := tokenLimit * 4
-	var b strings.Builder
-
-	facts, err := a.DB.Run("SELECT fact FROM facts ORDER BY created_at DESC LIMIT 5;")
-	if err == nil && strings.TrimSpace(facts) != "" {
-		b.WriteString("## Project Facts\n")
-		for _, line := range strings.Split(strings.TrimSpace(facts), "\n") {
-			if strings.TrimSpace(line) == "" {
-				continue
-			}
-			b.WriteString("- ")
-			b.WriteString(line)
-			b.WriteByte('\n')
-		}
-		b.WriteByte('\n')
-	}
-
-	if strings.TrimSpace(query) != "" {
-		knowSQL := fmt.Sprintf(`SELECT area, summary FROM knowledge
-WHERE area LIKE '%%%s%%' OR summary LIKE '%%%s%%'
-LIMIT 3;`, db.SQLQuote(query), db.SQLQuote(query))
-		knowledge, err := a.DB.Run(knowSQL)
-		if err == nil && strings.TrimSpace(knowledge) != "" {
-			b.WriteString("## Relevant Code Areas\n")
-			b.WriteString(strings.TrimSpace(knowledge))
-			b.WriteString("\n\n")
-		}
-	}
-
-	sessions, err := a.DB.Run("SELECT summary FROM sessions ORDER BY created_at DESC LIMIT 3;")
-	if err == nil && strings.TrimSpace(sessions) != "" {
-		b.WriteString("## Recent Work\n")
-		for _, line := range strings.Split(strings.TrimSpace(sessions), "\n") {
-			if strings.TrimSpace(line) == "" {
-				continue
-			}
-			b.WriteString("- ")
-			b.WriteString(line)
-			b.WriteByte('\n')
-		}
-		b.WriteByte('\n')
-	}
-
-	if strings.TrimSpace(query) != "" {
-		searchSQL := fmt.Sprintf(`SELECT snippet(memory_fts, 0, '', '', '...', 32) as match
-FROM memory_fts
-WHERE memory_fts MATCH '%s'
-ORDER BY rank
-LIMIT 5;`, db.SQLQuote(query))
-		related, err := a.DB.Run(searchSQL)
-		if err == nil && strings.TrimSpace(related) != "" {
-			b.WriteString("## Related Context\n")
-			b.WriteString(strings.TrimSpace(related))
-			b.WriteByte('\n')
-		}
-	}
-
-	out := b.String()
-	if len(out) > charLimit {
-		out = out[:charLimit]
 	}
 	fmt.Print(out)
 	return nil

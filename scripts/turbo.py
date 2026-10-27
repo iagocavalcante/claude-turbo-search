@@ -26,13 +26,13 @@ MEMORY = PLUGIN / 'memory' / 'memory-db.sh'
 SENSITIVE = re.compile(r'(^|[/. _-])(secrets?|credentials?|passwords?|tokens?|private[-_]?keys?)([/. _-]|$)', re.I)
 
 
-def run(args, cwd=None, timeout=5, env=None):
+def run(args, cwd=None, timeout=5, env=None, input_text=None):
     """A deadline also kills grandchildren, including embedding/model processes."""
     with subprocess.Popen([str(a) for a in args], cwd=cwd, env=env, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, start_new_session=True) as proc:
+                          stderr=subprocess.PIPE, stdin=subprocess.PIPE if input_text is not None else subprocess.DEVNULL, start_new_session=True) as proc:
         ACTIVE.add(proc.pid)
         try:
-            out, err = proc.communicate(timeout=timeout)
+            out, err = proc.communicate(input=input_text.encode() if input_text is not None else None, timeout=timeout)
             if proc.returncode:
                 raise RuntimeError(f'{Path(str(args[0])).name} exited {proc.returncode}: '
                                    + err.decode('utf-8', errors='replace')[-1000:].strip())
@@ -228,43 +228,43 @@ def context_output(root, results, memories='', budget=6000):
               'editing or making precise claims. Memory may be stale.\n'
               + 'Repository: ' + html.escape(str(root)) + '\n')
     footer = '</relevant-context>'
+    available = budget - len(header + footer)
+    if available <= 0:
+        return ''
+    memory = ''
+    if memories:
+        label = 'Memory (historical):\n'
+        memory_budget = available // 2 if results else available
+        if memory_budget > len(label) + 1:
+            parts = [label]
+            used = len(label) + 1
+            for char in memories:
+                escaped = html.escape(char)
+                if used + len(escaped) > memory_budget:
+                    break
+                parts.append(escaped)
+                used += len(escaped)
+            memory = ''.join(parts) + '\n'
     body = ''
     for hit in results:
         hit = dict(hit)
         if isinstance(hit.get('snippet'), str):
             hit['snippet'] = hit['snippet'][:1200]
-        chunk = html.escape(json.dumps(hit, ensure_ascii=True))
-        if len(header + body + chunk + footer) + 1 <= budget:
-            body += chunk + '\n'
-    if memories:
-        remaining = max(0, budget - len(header + body + footer) - 30)
-        snippet = memories[:remaining]
-        while len(html.escape(snippet)) > remaining:
-            snippet = snippet[:len(snippet) // 2]
-        body += 'Memory (historical):\n' + html.escape(snippet) + '\n'
-    return header + body + footer if results or memories else ''
+        chunk = html.escape(json.dumps(hit, ensure_ascii=True)) + '\n'
+        if len(body + chunk + memory) <= available:
+            body += chunk
+    return header + body + memory + footer if body or memory else ''
 
 
-def memory_context(root, query, intent):
+def memory_context(root, query):
     env = dict(os.environ, MEMORY_REPO_ROOT=str(root))
-    output = []
     if not (memory_dir(root) / 'memory.db').exists():
         return ''
-    commands = [('context', query, '500')]
-    if intent in {'debug', 'factual', 'refactor'}:
-        commands.append(('entity-search', query))
-    if intent != 'factual':
-        commands.append(('vsearch', query, '3'))
-    deadline = time.monotonic() + 4
-    for args in commands:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        try:
-            output.append(run(['bash', MEMORY, *args], cwd=root, env=env, timeout=remaining))
-        except (OSError, RuntimeError, subprocess.TimeoutExpired):
-            diagnostic(root, 'Memory retrieval unavailable; run doctor')
-    return '\n'.join(output)
+    try:
+        return run(['bash', MEMORY, 'context', query, '500'], cwd=root, env=env, timeout=4)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        diagnostic(root, 'Memory retrieval unavailable; run doctor')
+        return ''
 
 
 def diagnostic(root, message):
@@ -285,16 +285,9 @@ def hook(mode):
     if not isinstance(prompt, str) or len(prompt) < 10 or prompt.startswith('/'):
         return
     root = repo_root(data.get('cwd'))
-    intent = 'general'
-    for candidate, pattern in [('debug', r'bug|error|crash|debug|fail'),
-                               ('refactor', r'refactor|restructur|simplif'),
-                               ('factual', r'what is|where is|which|list all')]:
-        if re.search(pattern, prompt, re.I):
-            intent = candidate
-            break
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         docs = pool.submit(search, root, prompt)
-        memories = pool.submit(memory_context, root, prompt, intent) if mode == 'rag' else None
+        memories = pool.submit(memory_context, root, prompt) if mode == 'rag' else None
         try:
             results = docs.result()
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
@@ -314,12 +307,34 @@ def session_file(root, session):
     return memory_dir(root) / 'activity' / (hashlib.sha256(session.encode()).hexdigest() + '.jsonl')
 
 
+def activity_files(root, files):
+    result = []
+    for name in files:
+        if not isinstance(name, str) or len(name) > 1024:
+            continue
+        path = Path(name)
+        if path.is_absolute():
+            if not path.is_relative_to(root):
+                continue
+            path = path.relative_to(root)
+        name = str(path)
+        if (len(name.encode()) > 256 or any(c in name for c in ('\\', '\x00', '\r', '\n'))
+                or not path.parts or any(p.startswith('.') for p in path.parts)
+                or SENSITIVE.search(name) or path.suffix.lower() in {'.pem', '.key', '.p12', '.pfx'}):
+            continue
+        if name not in result:
+            result.append(name)
+        if len(result) == 32:
+            break
+    return result
+
+
 def activity():
     data = envelope()
     root = repo_root(data.get('cwd'))
     path = session_file(root, data.get('session_id'))
     tool = data.get('tool_name')
-    if not isinstance(tool, str) or not tool:
+    if not isinstance(tool, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,150}', tool):
         return
     args = data.get('tool_input') or {}
     files = []
@@ -330,9 +345,7 @@ def activity():
             patch = args.get('command', '')
             if isinstance(patch, str):
                 files = re.findall(r'^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$', patch, re.M)
-    files = [str(Path(p).relative_to(root)) if Path(p).is_absolute() and Path(p).is_relative_to(root)
-             else p for p in files]
-    files = [p for p in files if not Path(p).is_absolute() and '..' not in Path(p).parts and not SENSITIVE.search(p)]
+    files = activity_files(root, files)
     event = {'time': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'tool': tool[:150], 'files': files}
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     # One lock covers append and retention, including parallel tools in the same session.
@@ -357,6 +370,47 @@ def read_activity(root, session):
         print(json.dumps([json.loads(line) for line in source if line.strip()]))
 
 
+def checkpoint(agent):
+    data = envelope()
+    if data.get('hook_event_name') not in {'PreCompact', 'SessionEnd'}:
+        return
+    root = repo_root(data.get('cwd'))
+    path = session_file(root, data.get('session_id'))
+    if not (memory_dir(root) / 'memory.db').exists() or not path.exists() or path.is_symlink():
+        return
+    # Holding the activity lock through persistence prevents an older snapshot winning a race.
+    with path.open() as source:
+        fcntl.flock(source, fcntl.LOCK_SH)
+        raw = source.read(1048577)
+        if len(raw) > 1048576:
+            return
+        events = [json.loads(line) for line in raw.splitlines()[-200:] if line.strip()]
+        if not events:
+            return
+        tools, files = set(), []
+        for event in events:
+            if not isinstance(event, dict):
+                raise ValueError('Invalid activity event')
+            tool = event.get('tool')
+            if not isinstance(tool, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,150}', tool):
+                raise ValueError('Invalid activity tool')
+            tools.add(tool)
+            paths = event.get('files', [])
+            if not isinstance(paths, list):
+                raise ValueError('Invalid activity paths')
+            files.extend(activity_files(root, paths))
+        payload = {'source_agent': agent, 'source_session': data['session_id'],
+                   'fingerprint': hashlib.sha256(raw.encode()).hexdigest(),
+                   'event': data['hook_event_name'], 'event_count': len(events),
+                   'tools': sorted(tools)[:32], 'files': activity_files(root, sorted(set(files)))}
+        env = dict(os.environ, MEMORY_REPO_ROOT=str(root))
+        try:
+            run(['bash', MEMORY, 'checkpoint'], cwd=root, env=env, timeout=2,
+                input_text=json.dumps(payload, ensure_ascii=False))
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            diagnostic(root, 'Automatic checkpoint unavailable; activity retained locally')
+
+
 def setup_hooks(client, mode, memory, remove):
     clients = ['claude', 'codex'] if client == 'both' else [client]
     for name in clients:
@@ -367,8 +421,9 @@ def setup_hooks(client, mode, memory, remove):
         if not isinstance(config, dict) or not isinstance(config.get('hooks', {}), dict):
             raise ValueError(f'Invalid configuration object: {path}')
         hooks = config.setdefault('hooks', {})
-        old_names = ('pre-prompt-search.sh', 'rag-context-hook.sh', 'track-activity.sh')
-        for event in ('UserPromptSubmit', 'PostToolUse'):
+        old_names = ('pre-prompt-search.sh', 'rag-context-hook.sh', 'track-activity.sh', 'checkpoint-session.sh')
+        events = ('UserPromptSubmit', 'PostToolUse', 'PreCompact', 'SessionEnd')
+        for event in events:
             groups = []
             for group in hooks.get(event, []):
                 kept = [h for h in group.get('hooks', []) if not (
@@ -383,7 +438,10 @@ def setup_hooks(client, mode, memory, remove):
             if memory:
                 hooks['PostToolUse'].append({'matcher': '.*', 'hooks': [{'type': 'command', 'command':
                     shlex.join(['bash', str(PLUGIN / 'hooks' / 'track-activity.sh')]), 'timeout': 5}]})
-        for event in ('UserPromptSubmit', 'PostToolUse'):
+                for event in ('PreCompact', 'SessionEnd'):
+                    hooks[event].append({'hooks': [{'type': 'command', 'command':
+                        shlex.join(['bash', str(PLUGIN / 'hooks' / 'checkpoint-session.sh'), '--agent', name]), 'timeout': 3}]})
+        for event in events:
             if not hooks[event]:
                 del hooks[event]
         if not hooks:
@@ -447,6 +505,8 @@ def main():
     p = sub.add_parser('hook')
     p.add_argument('mode', choices=['simple', 'rag'])
     sub.add_parser('activity')
+    p = sub.add_parser('checkpoint')
+    p.add_argument('--agent', choices=['claude', 'codex'], required=True)
     p = sub.add_parser('activity-read')
     p.add_argument('--session', required=True)
     p = sub.add_parser('setup-hooks')
@@ -457,7 +517,7 @@ def main():
     sub.add_parser('doctor')
     sub.add_parser('mcp')
     args = parser.parse_args()
-    if args.command in {'hook', 'activity'}:
+    if args.command in {'hook', 'activity', 'checkpoint'}:
         def stop_hook(signum, frame):
             for pid in tuple(ACTIVE):
                 try:
@@ -467,12 +527,14 @@ def main():
             os._exit(0)
         signal.signal(signal.SIGALRM, stop_hook)
         signal.signal(signal.SIGTERM, stop_hook)
-        signal.alarm(8 if args.command == 'hook' else 4)
+        signal.setitimer(signal.ITIMER_REAL, 8 if args.command == 'hook' else (2.5 if args.command == 'checkpoint' else 4))
     try:
         if args.command == 'hook':
             hook(args.mode)
         elif args.command == 'activity':
             activity()
+        elif args.command == 'checkpoint':
+            checkpoint(args.agent)
         elif args.command == 'setup-hooks':
             setup_hooks(args.client, 'rag' if args.rag else 'simple', args.memory, args.remove)
         else:
@@ -491,7 +553,7 @@ def main():
             else:
                 return doctor(root)
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
-        if args.command not in {'hook', 'activity'}:
+        if args.command not in {'hook', 'activity', 'checkpoint'}:
             print(f'turbo-search: {error}', file=sys.stderr)
             return 1
     return 0

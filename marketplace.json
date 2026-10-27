@@ -40,6 +40,11 @@
       "description": "Save session to persistent memory"
     },
     {
+      "path": "skills/resume-memory",
+      "name": "resume-memory",
+      "description": "Inspect and claim an unfinished-work handoff from Claude or Codex"
+    },
+    {
       "path": "skills/memory-stats",
       "name": "memory-stats",
       "description": "View memory database statistics"

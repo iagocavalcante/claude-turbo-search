@@ -15,6 +15,13 @@
 
 set -e
 
+# Old direct callers must not reach the destructive consolidation implementation.
+case "${1:-}" in
+    add-session|consolidate)
+        exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/memory-db.sh" "$@"
+        ;;
+esac
+
 # Find repo root and memory database
 find_repo_root() {
     local root
@@ -863,7 +870,7 @@ case "${1:-}" in
         echo "  recent [n]              Show n recent sessions"
         echo "  context <query> [limit] Get context for injection"
         echo "  embed                   Process embedding queue"
-        echo "  consolidate             Merge overlapping sessions and deduplicate facts"
+        echo "  consolidate             Supersede exact duplicates without deleting history"
         echo "  entity-search <query> [type]  Search by entity name (type: file|package|concept)"
         echo "  stats                   Show database statistics"
         exit 1

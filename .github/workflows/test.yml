@@ -45,10 +45,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.15'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: memory/go.mod
+          cache: false
       - name: Install pinned clients and dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ripgrep jq sqlite3
-          npm install -g @anthropic-ai/claude-code@2.1.306 @openai/codex@0.163.0 @tobilu/qmd@2.8.3
+          npm install -g @anthropic-ai/claude-code@2.1.311 @openai/codex@0.164.0 @tobilu/qmd@2.8.3
       - name: Isolated client and MCP smoke test
         run: python3 tests/smoke_clients.py
+      - name: Native lifecycle hook smoke test (local response fixtures)
+        run: python3 tests/smoke_lifecycle.py

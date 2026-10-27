@@ -144,6 +144,7 @@ This checks dependencies, builds and initializes memory, registers the client MC
 | `/turbo-index` | Set up optimized search indexing for a project |
 | `/qmd` | Search docs before reading to save tokens |
 | `/remember` | Save session context to persistent memory |
+| `/resume-memory` | Inspect and claim an unfinished-work handoff from Claude or Codex |
 | `/memory-stats` | View memory database statistics |
 | `/token-stats` | Show token economics and savings dashboard |
 | `/knowledge-graph` | Interactive TUI knowledge graph viewer for the memory database |
@@ -177,6 +178,82 @@ Track your work across sessions:
 ```
 
 The memory system uses SQLite FTS5 for instant search across all your saved sessions, knowledge, and facts.
+
+### Memory continuity and retrieval
+
+`/remember` can also save a structured handoff for unfinished work: objective,
+completed work, failed approaches, open questions, and next steps. `/resume-memory`
+inspects the checkpoint against the current checkout and explicitly claims it.
+Repeated saves refresh an open handoff; an accepted checkpoint remains immutable
+and inspectable. Claims are atomic within one database, including concurrent
+Claude/Codex sessions. Copies synced to different machines do not share claim locks.
+
+From the target repository, with `PLUGIN_DIR` pointing to this installation:
+
+```bash
+# One deduplicated ranking from full-text and exact entity matches; no model needed.
+"$PLUGIN_DIR/memory/memory-db.sh" query --explain "authentication decision"
+# Explicitly include the configured embedding provider; failures retain lexical hits.
+"$PLUGIN_DIR/memory/memory-db.sh" query --vector "authentication decision"
+"$PLUGIN_DIR/memory/memory-db.sh" handoff list
+"$PLUGIN_DIR/memory/memory-db.sh" handoff show 3
+"$PLUGIN_DIR/memory/memory-db.sh" handoff accept 3 "codex:current-session-id"
+
+# Explicit maintenance: hide exact duplicates without changing original records.
+"$PLUGIN_DIR/memory/memory-db.sh" consolidate
+# Mark fact 4 obsolete in favor of fact 9, or restore it to retrieval.
+"$PLUGIN_DIR/memory/memory-db.sh" supersede fact 4 9
+"$PLUGIN_DIR/memory/memory-db.sh" restore fact 4
+```
+
+Consolidation no longer runs automatically after session saves. It only marks
+exact duplicate sessions/facts as superseded; shared topics and substring matches
+are insufficient. Superseded entries stay in SQLite and historical graph/dashboard
+views but are excluded from search, recent work, and injected context. `supersede`
+and `restore` support `session` and `fact`; knowledge updates still replace the
+current summary for an area, refresh its entity associations, and invalidate/requeue
+its embedding atomically. Restoring an entry keeps its replacement too; explicit
+consolidation may hide an exact duplicate again.
+
+Prompt hooks now use one offline keyword/entity ranking and reserve room for
+memory alongside document snippets. Embedding retrieval is explicit through
+`query --vector` or `vsearch`. Context budgets remain estimates, not measured tokens.
+
+With `setup-hooks.sh --memory`, `PreCompact` and `SessionEnd` save automatic
+activity checkpoints from the current session's local log. Each snapshot covers
+at most 200 events and lists up to 32 files and 32 tools. It records observations,
+not accomplishments or a guessed plan, and creates no pending handoff. Prompts,
+transcripts, command bodies and tool outputs are not read into checkpoints;
+hidden paths, sensitive filenames and private-key filenames are excluded.
+
+Unchanged activity is saved once, even when a boundary is retried. New snapshots
+supersede older snapshots from the same agent/session while retaining originals.
+Hooks have a 2.5-second internal deadline and a 3-second configured timeout. They
+never build, initialize a missing database, call an LLM, or push to the dashboard.
+A failed checkpoint leaves the local activity log available for retry or `/remember`.
+As with ordinary sessions, stored snapshots accumulate until explicitly managed.
+
+Export portable Markdown from the target repository:
+
+```bash
+"$PLUGIN_DIR/memory/memory-db.sh" export "$HOME/Downloads/project-memory.md"
+```
+
+The destination directory must already exist and the filename must be new.
+Export writes a complete file with owner-only permissions and never overwrites
+an existing file or symlink. It includes sessions, knowledge, facts, relationships,
+handoffs and checkpoint provenance with stable database IDs; superseded entries
+are labeled. Embeddings and activity logs are omitted. The export is an explicit,
+read-only snapshot for inspection and sharing, not a replacement for the SQLite
+backup or a format that can currently be imported. Stored memory content is
+preserved literally rather than interpreted as Markdown instructions.
+
+After updating, rebuild the binary and run `memory-db.sh init` in each target
+checkout. Initialization adds the handoff and checkpoint tables without replacing legacy data.
+Rerun hook setup with `--memory` to register the new lifecycle handlers.
+Existing command syntax and database paths are retained. Old binaries do not
+honor supersession; do not use their destructive `consolidate` command. History
+deleted by older releases cannot be recovered without a backup.
 
 ### Knowledge Graph
 
